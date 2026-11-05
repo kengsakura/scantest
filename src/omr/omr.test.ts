@@ -130,6 +130,13 @@ const cases: Case[] = [
     corners: [{ x: 1230, y: 40 }, { x: 1250, y: 860 }, { x: 50, y: 880 }, { x: 30, y: 60 }],
   },
   {
+    name: 'name-only sheet (no student ID grid)',
+    cfg: { ...base, questions: 40, choices: 5, idDigits: 0 },
+    w: 720,
+    h: 1000,
+    corners: [{ x: 60, y: 50 }, { x: 670, y: 40 }, { x: 690, y: 960 }, { x: 30, y: 950 }],
+  },
+  {
     name: 'strong keystone (phone tilted)',
     cfg: { ...base, questions: 20, choices: 4 },
     w: 720,
@@ -150,6 +157,11 @@ describe('scanner (synthetic photos)', () => {
       expect(res.config).toEqual(c.cfg)
       expect(sortRows(res.answers)).toEqual(sortRows(answers))
       expect(res.studentId).toBe(c.cfg.idDigits ? studentId : null)
+      // name area crop: straightened, about 3 px/mm, small enough to store cheaply
+      expect(res.nameCrop.height).toBeGreaterThan(40)
+      expect(res.nameCrop.height).toBeLessThan(70)
+      expect(res.nameCrop.width).toBeGreaterThan(200)
+      expect(res.nameCrop.width).toBeLessThan(520)
     })
   }
 

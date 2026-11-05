@@ -1,4 +1,4 @@
-import type { ScanResult } from '../omr/scanner'
+import type { GrayImage, ScanResult } from '../omr/scanner'
 import type { ScanRequest } from './scanWorker'
 
 /** Runs the sheet reader in a Web Worker so the camera preview stays smooth. */
@@ -51,4 +51,20 @@ export function grabFrame(
 /** LINE / Facebook / Instagram in-app browsers often block the camera. */
 export function isInAppBrowser(): boolean {
   return /Line\/|FBAN|FBAV|Instagram|FB_IAB/i.test(navigator.userAgent)
+}
+
+/** Encode a grayscale crop as a small WebP (or JPEG where WebP encoding is unsupported) data URL. */
+export function grayToDataUrl(img: GrayImage, quality = 0.5): string {
+  const canvas = document.createElement('canvas')
+  canvas.width = img.width
+  canvas.height = img.height
+  const ctx = canvas.getContext('2d')!
+  const rgba = ctx.createImageData(img.width, img.height)
+  for (let i = 0; i < img.data.length; i++) {
+    rgba.data[i * 4] = rgba.data[i * 4 + 1] = rgba.data[i * 4 + 2] = img.data[i]
+    rgba.data[i * 4 + 3] = 255
+  }
+  ctx.putImageData(rgba, 0, 0)
+  const webp = canvas.toDataURL('image/webp', quality)
+  return webp.startsWith('data:image/webp') ? webp : canvas.toDataURL('image/jpeg', quality)
 }

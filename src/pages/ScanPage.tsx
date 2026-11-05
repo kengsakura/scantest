@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { CLOUD, getDB, saveScan, scansOf, setScanStudent, studentsOf, useAppState, useDB, useExamScans } from '../data/store'
+import { CLOUD, getDB, saveScan, scansOf, studentsOf, useAppState, useDB, useExamScans } from '../data/store'
 import type { Exam, ScanRecord, User } from '../data/types'
 import { formatScore } from '../lib/exam'
 import { grade, missingAnswers } from '../omr/grading'
 import { SCAN_FAILURE_TEXT, type ScanResult, type ScanSuccess } from '../omr/scanner'
-import { grabFrame, isInAppBrowser, ScanClient } from '../scan/scanClient'
+import { grabFrame, grayToDataUrl, isInAppBrowser, ScanClient } from '../scan/scanClient'
 import { GradeStrip } from './GradeStrip'
+import { NameImage, StudentPicker } from './StudentPicker'
 
 type CameraState = 'idle' | 'starting' | 'live' | 'error'
 
@@ -77,13 +78,14 @@ function Scanner({ exam, user }: { exam: Exam; user: User }) {
         answers: r.answers,
         uncertain: r.uncertain,
         scannedBy: user.id,
+        nameImage: grayToDataUrl(r.nameCrop),
       })
       const known = r.studentId !== null && getDB().students.some((s) => s.classroomId === exam.classroomId && s.code === r.studentId)
-      beep(known)
+      beep(known || exam.idDigits === 0) // name-only exams are matched later, not an error
       setLastId(rec.id)
       return rec
     },
-    [exam.id, exam.classroomId, user.id],
+    [exam.id, exam.classroomId, exam.idDigits, user.id],
   )
 
   /* ---- camera loop ---- */
@@ -380,17 +382,17 @@ function ResultCard({ exam, rec }: { exam: Exam; rec: ScanRecord }) {
             </>
           ) : (
             <>
-              <div className="result-name">{rec.studentCode ? `ไม่พบรหัส ${rec.studentCode} ในห้องนี้` : 'อ่านรหัสนักเรียนไม่ได้'}</div>
-              <select value="" onChange={(e) => e.target.value && setScanStudent(rec.id, e.target.value)}>
-                <option value="">เลือกนักเรียนเอง…</option>
-                {students.map((s) => (
-                  <option key={s.id} value={s.code}>
-                    {s.number}. {s.name}
-                  </option>
-                ))}
-              </select>
+              <div className="result-name">
+                {exam.idDigits === 0
+                  ? 'ยังไม่ระบุชื่อ'
+                  : rec.studentCode
+                    ? `ไม่พบรหัส ${rec.studentCode} ในห้องนี้`
+                    : 'อ่านรหัสนักเรียนไม่ได้'}
+              </div>
+              <StudentPicker exam={exam} scan={rec} label={exam.idDigits === 0 ? 'เลือกตอนนี้ หรือไปเลือกทีหลังในหน้าผลสอบ…' : 'เลือกนักเรียนเอง…'} />
             </>
           )}
+          <NameImage scan={rec} />
         </div>
         <div className="score">
           <strong>{formatScore(g.score)}</strong>
@@ -421,7 +423,7 @@ function RecentList({ exam, onPick }: { exam: Exam; onPick: (id: string) => void
           return (
             <li key={s.id}>
               <button onClick={() => onPick(s.id)}>
-                <span>{st ? `${st.number}. ${st.name}` : s.studentCode ? `รหัส ${s.studentCode} (ไม่พบ)` : 'อ่านรหัสไม่ได้'}</span>
+                <span>{st ? `${st.number}. ${st.name}` : s.studentCode ? `รหัส ${s.studentCode} (ไม่พบ)` : exam.idDigits === 0 ? 'ยังไม่ระบุชื่อ' : 'อ่านรหัสไม่ได้'}</span>
                 <strong>{formatScore(g.score)}</strong>
               </button>
             </li>

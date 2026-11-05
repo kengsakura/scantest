@@ -948,8 +948,7 @@ label.inline.grow input {
   border-color: #f0d68a;
   margin-bottom: 1rem;
 }
-.form + .card,
-.card + .card {
+section > .card + .card {
   margin-top: 1rem;
 }
 h2.mt {
@@ -970,6 +969,50 @@ h2.mt {
   gap: 1rem;
   padding: 0.35rem 0;
   border-top: 1px solid var(--line);
+}
+
+.name-img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  max-height: 72px;
+  margin: 0.5rem 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+}
+.name-img.loading {
+  width: 240px;
+  height: 48px;
+  background: linear-gradient(90deg, #f1f4f3, #e6ebe9, #f1f4f3);
+}
+.match-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+.match-list li {
+  border-top: 1px solid var(--line);
+  padding-top: 0.5rem;
+}
+.match-row,
+.detail-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin: 0.4rem 0;
+}
+.match-score {
+  font-size: 1.3rem;
+  min-width: 2.5rem;
+}
+.student-picker {
+  min-width: 0;
+  max-width: 100%;
+  flex: 1 1 220px;
 }
 
 /* ---- small screens ---- */

@@ -49,6 +49,7 @@ interface ScanRow {
   uncertain: number[]
   scanned_at: string
   scanned_by: string | null
+  name_image?: string | null
 }
 interface SettingsRow {
   school_name: string
@@ -88,6 +89,8 @@ export const fromScan = (r: ScanRow): ScanRecord => ({
   uncertain: r.uncertain ?? [],
   scannedAt: r.scanned_at,
   scannedBy: r.scanned_by ?? '',
+  // undefined = not loaded yet (list queries skip it), null = no picture
+  nameImage: r.name_image === undefined ? undefined : r.name_image,
 })
 export const toScan = (s: ScanRecord): ScanRow => ({
   id: s.id,
@@ -97,6 +100,7 @@ export const toScan = (s: ScanRecord): ScanRow => ({
   uncertain: s.uncertain,
   scanned_at: s.scannedAt,
   scanned_by: s.scannedBy || null,
+  name_image: s.nameImage ?? null,
 })
 
 function sb(): SupabaseClient {
@@ -139,9 +143,17 @@ export async function fetchAll(userId: string): Promise<Partial<Database> & { me
   }
 }
 
+// name pictures are left out of list queries and fetched only when someone looks at one
+const SCAN_COLUMNS = 'id,exam_id,student_code,answers,uncertain,scanned_at,scanned_by'
+
 export async function fetchScans(examId: string): Promise<ScanRecord[]> {
-  const rows = check(await sb().from('scans').select('*').eq('exam_id', examId)) as ScanRow[]
+  const rows = check(await sb().from('scans').select(SCAN_COLUMNS).eq('exam_id', examId)) as ScanRow[]
   return rows.map(fromScan)
+}
+
+export async function fetchNameImage(scanId: string): Promise<string | null> {
+  const row = check(await sb().from('scans').select('name_image').eq('id', scanId).maybeSingle()) as { name_image: string | null } | null
+  return row?.name_image ?? null
 }
 
 /* ---- writes (each throws on failure) ---- */

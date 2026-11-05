@@ -15,6 +15,7 @@ export function NewExamPage({ user }: { user: User }) {
   const [classroomId, setClassroomId] = useState(db.classrooms[0]?.id ?? '')
   const [sheet, setSheet] = useState<SheetType>({ questions: 30, choices: 4, labelStyle: 'thai' })
   const [defaultPoints, setDefaultPoints] = useState(1)
+  const [useStudentId, setUseStudentId] = useState(true)
 
   const set = (patch: Partial<SheetType>) =>
     setSheet((s) => {
@@ -24,8 +25,8 @@ export function NewExamPage({ user }: { user: User }) {
     })
 
   const preview: SheetConfig = useMemo(
-    () => ({ ...sheet, idDigits: db.settings.idDigits, versions: 0, examCode: 'XXXXXX' }),
-    [sheet, db.settings.idDigits],
+    () => ({ ...sheet, idDigits: useStudentId ? db.settings.idDigits : 0, versions: 0, examCode: 'XXXXXX' }),
+    [sheet, db.settings.idDigits, useStudentId],
   )
   const layout = computeLayout(preview)
   const maxQ = useMemo(() => maxQuestionsFor({ ...preview, questions: 1 }, MAX_QUESTIONS), [preview])
@@ -34,7 +35,7 @@ export function NewExamPage({ user }: { user: User }) {
 
   const submit = () => {
     if (!canCreate) return
-    const exam = createExam({ title: title.trim(), classroomId, ownerId: user.id, sheet, defaultPoints })
+    const exam = createExam({ title: title.trim(), classroomId, ownerId: user.id, sheet, defaultPoints, useStudentId })
     go(`/exams/${exam.id}/key`)
   }
 
@@ -120,6 +121,23 @@ export function NewExamPage({ user }: { user: User }) {
                   </button>
                 ))}
             </div>
+          </fieldset>
+
+          <fieldset>
+            <legend>ระบุตัวนักเรียนด้วย</legend>
+            <div className="chips">
+              <button type="button" className={`chip ${useStudentId ? 'on' : ''}`} onClick={() => setUseStudentId(true)}>
+                ฝนรหัสนักเรียน
+              </button>
+              <button type="button" className={`chip ${!useStudentId ? 'on' : ''}`} onClick={() => setUseStudentId(false)}>
+                เขียนชื่ออย่างเดียว
+              </button>
+            </div>
+            <span className="hint">
+              {useStudentId
+                ? 'ระบบรู้ชื่อนักเรียนทันทีจากรหัสที่ฝน และเก็บภาพชื่อที่เขียนไว้ตรวจสอบ'
+                : 'ไม่มีช่องฝนรหัส ระบบเก็บภาพชื่อที่เขียน แล้วครูเลือกจับคู่ชื่อนักเรียนทีหลังในหน้าผลสอบ'}
+            </span>
           </fieldset>
 
           <label>

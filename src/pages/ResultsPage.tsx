@@ -6,6 +6,7 @@ import { go } from '../lib/router'
 import { choiceLabels } from '../omr/config'
 import { grade, maxScore, missingAnswers } from '../omr/grading'
 import { GradeStrip } from './GradeStrip'
+import { NameImage, StudentPicker } from './StudentPicker'
 
 interface Row {
   student: Student | null
@@ -41,6 +42,7 @@ export function ResultsPage({ examId }: { examId: string }) {
     ...students.map((st) => ({ student: st, scan: byCode.get(st.code) ?? null })),
     ...scans.filter((s) => !students.some((st) => st.code === s.studentCode)).map((s) => ({ student: null, scan: s })),
   ]
+  const unmatched = rows.filter((r) => !r.student).map((r) => r.scan!)
   const scores = scans.map((s) => grade(s.answers, exam.key).score)
   const full = maxScore(exam.key)
   const mean = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : 0
@@ -118,6 +120,28 @@ export function ResultsPage({ examId }: { examId: string }) {
         </div>
       </div>
 
+      {unmatched.length > 0 && (
+        <div className="card attention">
+          <h2>ยังไม่รู้ว่าเป็นใคร ({unmatched.length} แผ่น)</h2>
+          <p className="hint">ดูชื่อที่นักเรียนเขียน แล้วเลือกว่าเป็นใคร</p>
+          <ul className="match-list">
+            {unmatched.map((scan) => (
+              <li key={scan.id}>
+                <NameImage scan={scan} />
+                <div className="match-row">
+                  <strong className="match-score">{formatScore(grade(scan.answers, exam.key).score)}</strong>
+                  <StudentPicker exam={exam} scan={scan} />
+                  <button className="btn ghost small danger" onClick={() => confirm('ลบผลสแกนนี้?') && removeScan(scan.id)}>
+                    ลบ
+                  </button>
+                </div>
+                {scan.studentCode && <span className="muted small">รหัสที่ฝน: {scan.studentCode} (ไม่พบในห้องนี้)</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <div className="card table-card">
         <div className="table-tools">
           <strong>ผลรายคน</strong>
@@ -141,7 +165,7 @@ export function ResultsPage({ examId }: { examId: string }) {
             </tr>
           </thead>
           <tbody>
-            {rows.map(({ student, scan }) => {
+            {rows.filter((r) => r.student).map(({ student, scan }) => {
               const key = scan?.id ?? student!.id
               const g = scan ? grade(scan.answers, exam.key) : null
               return (
@@ -160,8 +184,13 @@ export function ResultsPage({ examId }: { examId: string }) {
                   {scan && open === key && (
                     <tr className="detail">
                       <td colSpan={6}>
+                        <NameImage scan={scan} />
                         <GradeStrip status={g!.status} />
                         {scan.uncertain.length > 0 && <p className="hint warn">ฝนไม่ชัด: ข้อ {scan.uncertain.join(', ')}</p>}
+                        <div className="detail-actions">
+                          <span className="muted small">ไม่ใช่คนนี้? เปลี่ยนเป็น</span>
+                          <StudentPicker exam={exam} scan={scan} />
+                        </div>
                         <button
                           className="btn ghost small danger"
                           onClick={() => confirm('ลบผลสแกนนี้?') && removeScan(scan.id)}

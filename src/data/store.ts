@@ -9,10 +9,10 @@
  * - local (no Supabase): everything lives in this browser's localStorage, with
  *   a pick-a-user demo login.
  */
-import { useEffect, useSyncExternalStore } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
 import { randomExamCode } from '../omr/config'
 import { emptyKey, type AnswerKey } from '../omr/grading'
-import { api, CLOUD, fetchAll, fetchScans, fromScan, isNetworkError, supabase, thaiError } from './cloud'
+import { api, CLOUD, fetchAll, fetchNameImage, fetchScans, fromScan, isNetworkError, supabase, thaiError } from './cloud'
 import type { AllowedEmail, Classroom, Database, Exam, Role, ScanRecord, Settings, SheetType, Student, User } from './types'
 
 const DB_KEY = 'scantest.db.v1'
@@ -328,7 +328,15 @@ export function studentsOf(d: Database, classroomId: string): Student[] {
 /* Exams                                                               */
 /* ------------------------------------------------------------------ */
 
-export function createExam(input: { title: string; classroomId: string; ownerId: string; sheet: SheetType; defaultPoints: number }): Exam {
+export function createExam(input: {
+  title: string
+  classroomId: string
+  ownerId: string
+  sheet: SheetType
+  defaultPoints: number
+  /** false = sheet has no ID grid; students are matched later from the name picture */
+  useStudentId: boolean
+}): Exam {
   const used = new Set(db.exams.map((e) => e.code))
   let code = randomExamCode()
   while (used.has(code)) code = randomExamCode()
@@ -340,7 +348,7 @@ export function createExam(input: { title: string; classroomId: string; ownerId:
     ownerId: input.ownerId,
     createdAt: new Date().toISOString(),
     sheet: input.sheet,
-    idDigits: db.settings.idDigits,
+    idDigits: input.useStudentId ? db.settings.idDigits : 0,
     key: emptyKey(input.sheet.questions, input.defaultPoints),
   }
   commit({ ...db, exams: [exam, ...db.exams] })
@@ -368,6 +376,30 @@ export function visibleExams(d: Database, user: User): Exam[] {
 /* Scans                                                               */
 /* ------------------------------------------------------------------ */
 
+const nameImages = new Map<string, string | null>()
+
+/** The scan's name picture, fetched from the server the first time it is needed. */
+export function useNameImage(scan: ScanRecord | null): string | null | undefined {
+  const [, rerender] = useState(0)
+  const id = scan?.id
+  const missing = scan !== null && scan.nameImage === undefined
+  useEffect(() => {
+    if (!CLOUD || !id || !missing || nameImages.has(id)) return
+    let alive = true
+    fetchNameImage(id)
+      .then((img) => {
+        nameImages.set(id, img)
+        if (alive) rerender((n) => n + 1)
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [id, missing])
+  if (!scan) return null
+  return scan.nameImage !== undefined ? scan.nameImage : nameImages.get(scan.id)
+}
+
 export function scansOf(d: Database, examId: string): ScanRecord[] {
   return d.scans.filter((s) => s.examId === examId).sort((a, b) => b.scannedAt.localeCompare(a.scannedAt))
 }
@@ -387,7 +419,12 @@ function replaceScan(list: ScanRecord[], rec: ScanRecord): ScanRecord[] {
 
 async function loadScans(examId: string) {
   try {
-    const remoteScans = await fetchScans(examId)
+    const known = new Map(db.scans.map((s) => [s.id, s]))
+    // list queries skip name pictures: keep any we already have in memory
+    const remoteScans = (await fetchScans(examId)).map((s) => {
+      const prev = known.get(s.id)
+      return prev?.nameImage !== undefined ? { ...s, nameImage: prev.nameImage } : s
+    })
     loadedScans.add(examId)
     // keep scans still waiting in the outbox on top of what the server has
     let scans = [...db.scans.filter((s) => s.examId !== examId), ...remoteScans]

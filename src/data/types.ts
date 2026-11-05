@@ -42,7 +42,7 @@ export interface Exam {
   ownerId: string
   createdAt: string
   sheet: SheetType
-  /** Student-ID digits at the time the exam was created (sheets keep their layout) */
+  /** Student-ID digits on this exam's sheets; 0 = no ID grid, students are matched from the name picture */
   idDigits: number
   key: AnswerKey
 }
@@ -56,6 +56,9 @@ export interface ScanRecord {
   answers: number[][]
   /** Questions the scanner was unsure about (1-based) */
   uncertain: number[]
+  /** Small image (data URL) of the handwritten name/class area, to identify the student by eye.
+   *  undefined = not loaded yet, null = none */
+  nameImage?: string | null
   scannedAt: string
   scannedBy: string
 }

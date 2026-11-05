@@ -74,6 +74,8 @@ create table if not exists public.scans (
   unique (exam_id, student_code) -- one sheet per student per exam (NULLs may repeat)
 );
 create index if not exists scans_exam_idx on public.scans (exam_id);
+-- picture of the handwritten name area (small JPEG data URL), added in v2
+alter table public.scans add column if not exists name_image text;
 
 create or replace view public.exam_scan_counts with (security_invoker = on) as
   select exam_id, count(*)::int as n from public.scans group by exam_id;

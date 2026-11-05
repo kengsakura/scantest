@@ -215,6 +215,8 @@ export interface ScanSuccess {
   /** 1-based question numbers whose marks were close to the threshold */
   uncertain: number[]
   threshold: number
+  /** Straightened grayscale picture of the handwritten name / class area */
+  nameCrop: GrayImage
 }
 
 export interface ScanFail {
@@ -327,6 +329,33 @@ function warpRegion(img: GrayImage, H: Homography, x0: number, y0: number, wMm: 
     }
   }
   return { data: out, width: w, height: h }
+}
+
+/** Straightened grayscale crop of a sheet region (mm) at `pxPerMm`. */
+function cropGray(img: GrayImage, H: Homography, x0: number, y0: number, wMm: number, hMm: number, pxPerMm: number): GrayImage {
+  const w = Math.round(wMm * pxPerMm)
+  const h = Math.round(hMm * pxPerMm)
+  const data = new Uint8Array(w * h)
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) data[y * w + x] = sampleMm(img, H, x0 + (x + 0.5) / pxPerMm, y0 + (y + 0.5) / pxPerMm)
+  return { width: w, height: h, data }
+}
+
+/**
+ * Stretch contrast so paper becomes pure white and ink dark. Makes handwriting easier
+ * to read and the stored image much smaller (flat white compresses to almost nothing).
+ */
+function cleanForStorage(img: GrayImage): GrayImage {
+  const sorted = Array.from(img.data).sort((a, b) => a - b)
+  const ink = sorted[Math.floor(sorted.length * 0.02)]
+  const paper = sorted[Math.floor(sorted.length * 0.6)]
+  const span = Math.max(1, paper - ink) * 0.85
+  const data = new Uint8Array(img.data.length)
+  for (let i = 0; i < data.length; i++) {
+    const v = (img.data[i] - ink) / span
+    data[i] = v >= 1 ? 255 : v <= 0 ? 0 : Math.round(v * 255)
+  }
+  return { ...img, data }
 }
 
 function readQr(img: GrayImage, H: Homography): string | null {
@@ -442,5 +471,10 @@ function measure(img: GrayImage, H: Homography, config: SheetConfig, layout: She
   const vm = marked(vDark)
   const version = vm.length === 1 ? vm[0] : null
 
-  return { ok: true, config, layout, corners, answers, darkness, studentId, idDigits, version, uncertain, threshold }
+  // name + class lines, so a teacher can see who wrote the sheet when the ID can't be used
+  const [nameField, classField] = layout.fields
+  const top = nameField.y - 6
+  const nameCrop = cleanForStorage(cropGray(img, H, nameField.x, top, nameField.lineX1 - nameField.x + 1, classField.y + 3 - top, 3))
+
+  return { ok: true, config, layout, corners, answers, darkness, studentId, idDigits, version, uncertain, threshold, nameCrop }
 }
