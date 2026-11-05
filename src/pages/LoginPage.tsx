@@ -1,4 +1,5 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
+import { googleEnabled } from '../data/cloud'
 import { CLOUD, login, signInWithGoogle, signInWithPassword, signUp, useDB } from '../data/store'
 
 export function LoginPage() {
@@ -26,6 +27,10 @@ function CloudLogin() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+  const [google, setGoogle] = useState(false)
+  useEffect(() => {
+    void googleEnabled().then(setGoogle)
+  }, [])
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
@@ -43,7 +48,7 @@ function CloudLogin() {
     setBusy(false)
   }
 
-  const google = async () => {
+  const signInGoogle = async () => {
     const err = await signInWithGoogle()
     if (err) setError(/provider is not enabled/i.test(err) ? 'ยังไม่ได้เปิดการเข้าสู่ระบบด้วย Google ใน Supabase' : err)
   }
@@ -87,12 +92,16 @@ function CloudLogin() {
         </button>
       </form>
       {mode === 'signup' && <p className="hint">บัญชีใหม่ต้องให้ผู้ดูแลระบบอนุมัติก่อนใช้งาน (ยกเว้นอีเมลที่ผู้ดูแลระบบเพิ่มไว้ล่วงหน้า)</p>}
-      <div className="divider">
-        <span>หรือ</span>
-      </div>
-      <button className="btn secondary block" onClick={google}>
-        เข้าสู่ระบบด้วย Google
-      </button>
+      {google && (
+        <>
+          <div className="divider">
+            <span>หรือ</span>
+          </div>
+          <button className="btn secondary block" onClick={signInGoogle}>
+            เข้าสู่ระบบด้วย Google
+          </button>
+        </>
+      )}
     </>
   )
 }
