@@ -397,7 +397,9 @@ export function useNameImage(scan: ScanRecord | null): string | null | undefined
     }
   }, [id, missing])
   if (!scan) return null
-  return scan.nameImage !== undefined ? scan.nameImage : nameImages.get(scan.id)
+  if (scan.nameImage !== undefined) return scan.nameImage
+  if (!CLOUD) return null // nothing to fetch in local demo mode
+  return nameImages.get(scan.id)
 }
 
 export function scansOf(d: Database, examId: string): ScanRecord[] {
@@ -514,6 +516,22 @@ export function setScanStudent(scanId: string, studentCode: string) {
     void flushOutbox()
   } else {
     remote(() => api.setScanStudent(rec, studentCode))
+  }
+}
+
+/** Teacher corrected the marks read from a sheet ("แก้คำตอบ"). */
+export function updateScanAnswers(scanId: string, answers: number[][]) {
+  const rec = db.scans.find((s) => s.id === scanId)
+  if (!rec) return
+  const updated = { ...rec, answers, uncertain: [] }
+  commit({ ...db, scans: replaceScan(db.scans, updated) })
+  if (!CLOUD) return
+  if (outbox.some((s) => s.id === scanId)) {
+    outbox = replaceScan(outbox, updated)
+    saveOutbox()
+    void flushOutbox()
+  } else {
+    remote(() => api.updateScanAnswers(scanId, answers))
   }
 }
 

@@ -1015,6 +1015,72 @@ h2.mt {
   flex: 1 1 220px;
 }
 
+/* ---- paper review ---- */
+.paper-tools {
+  display: grid;
+  gap: 0.25rem;
+  margin-bottom: 1rem;
+}
+.paper-tabs {
+  max-width: 320px;
+  margin: 0 auto 1rem;
+}
+.paper.graded {
+  margin: 0 auto;
+  max-width: 760px;
+}
+.paper.editing {
+  outline: 3px solid var(--warn);
+  outline-offset: 2px;
+}
+.mark.good {
+  color: var(--ok);
+  font-weight: 700;
+}
+.mark.ok {
+  color: var(--warn);
+  font-weight: 700;
+}
+.mark.bad {
+  color: var(--bad);
+  font-weight: 700;
+}
+
+/* ---- item analysis ---- */
+.analysis td {
+  vertical-align: middle;
+}
+.freq {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+.freq-col {
+  display: grid;
+  justify-items: center;
+  grid-template-rows: 40px auto auto;
+  width: 34px;
+  font-size: 0.85rem;
+  line-height: 1.2;
+}
+.freq-col .bar {
+  align-self: end;
+  width: 26px;
+  min-height: 2px;
+  background: #e5a19a;
+  border-radius: 3px 3px 0 0;
+}
+.freq-col.key .bar {
+  background: var(--ok);
+}
+.freq-col.key b {
+  color: var(--ok);
+}
+.freq-extra {
+  margin-left: 0.4rem;
+  align-self: center;
+}
+
 /* ---- small screens ---- */
 @media (max-width: 860px) {
   .split,

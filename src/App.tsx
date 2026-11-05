@@ -3,10 +3,12 @@ import { CLOUD, dismissError, logout, useAppState, useCurrentUser, useDB } from 
 import { go, useRoute } from './lib/router'
 import { AdminClassesPage } from './pages/AdminClassesPage'
 import { AdminUsersPage } from './pages/AdminUsersPage'
+import { AnalysisPage } from './pages/AnalysisPage'
 import { ExamsPage } from './pages/ExamsPage'
 import { KeyPage } from './pages/KeyPage'
 import { LoginPage } from './pages/LoginPage'
 import { NewExamPage } from './pages/NewExamPage'
+import { PaperPage } from './pages/PaperPage'
 import { PrintPage } from './pages/PrintPage'
 import { ResultsPage } from './pages/ResultsPage'
 import { ScanPage } from './pages/ScanPage'
@@ -23,12 +25,14 @@ export default function App() {
   }
   if (user.role === 'pending') return <PendingPage reason="pending" error={error} />
 
-  const [section, id, sub] = route
+  const [section, id, sub, extra] = route
   let page: ReactNode
   if (section === 'exams' && id === 'new') page = <NewExamPage user={user} />
   else if (section === 'exams' && id && sub === 'key') page = <KeyPage examId={id} />
   else if (section === 'exams' && id && sub === 'print') page = <PrintPage examId={id} />
   else if (section === 'exams' && id && sub === 'scan') page = <ScanPage examId={id} user={user} />
+  else if (section === 'exams' && id && sub === 'paper' && extra) page = <PaperPage examId={id} scanId={extra} />
+  else if (section === 'exams' && id && sub === 'analysis') page = <AnalysisPage examId={id} />
   else if (section === 'exams' && id) page = <ResultsPage examId={id} />
   else if (section === 'classes' && user.role === 'admin') page = <AdminClassesPage selectedId={id} />
   else if (section === 'users' && user.role === 'admin') page = <AdminUsersPage />

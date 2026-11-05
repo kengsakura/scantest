@@ -18,8 +18,30 @@ const FONT = "'Sarabun', 'Noto Sans Thai', sans-serif"
 const INK = '#111'
 const BUBBLE = '#666'
 const LABEL = '#a3a3a3'
+const GOOD = '#16a34a'
+const BAD = '#dc2626'
 
-export function AnswerSheet({ config, texts, className }: { config: SheetConfig; texts: SheetTexts; className?: string }) {
+export interface SheetMarks {
+  /** Marked choices per question */
+  answers: number[][]
+  /** Correct choice per question (null = not set) and free questions, to colour marks */
+  key?: { answers: (number | null)[]; free: boolean[] }
+}
+
+export function AnswerSheet({
+  config,
+  texts,
+  className,
+  marks,
+  onBubbleClick,
+}: {
+  config: SheetConfig
+  texts: SheetTexts
+  className?: string
+  /** Draw a graded paper: student's marks filled, green = correct, red = wrong */
+  marks?: SheetMarks
+  onBubbleClick?: (question: number, choice: number) => void
+}) {
   const res = useMemo(() => computeLayout(config), [config])
   const qr = useMemo(() => qrMatrix(encodeConfig(config)), [config])
   if (!res.ok) return <div className="sheet-error">{res.error}</div>
@@ -150,14 +172,47 @@ export function AnswerSheet({ config, texts, className }: { config: SheetConfig;
           <text x={q.numberX} y={q.numberY} textAnchor="end" dominantBaseline="central" fontSize={fs} fontWeight={700} fill={INK}>
             {q.n}
           </text>
-          {q.bubbles.map((b, k) => (
-            <g key={k}>
-              <circle cx={b.cx} cy={b.cy} r={b.r} fill="none" stroke={BUBBLE} strokeWidth={0.25 * L.answer.scale} />
-              <text x={b.cx} y={b.cy} textAnchor="middle" dominantBaseline="central" fontSize={b.r * 1.05} fill={LABEL}>
-                {labels[k]}
-              </text>
-            </g>
-          ))}
+          {q.bubbles.map((b, k) => {
+            const i = q.n - 1
+            const marked = marks?.answers[i]?.includes(k) ?? false
+            const correct = marks?.key?.answers[i] === k
+            const free = marks?.key?.free[i] ?? false
+            const single = (marks?.answers[i]?.length ?? 0) === 1
+            const ring = !marks?.key
+              ? null
+              : marked
+                ? free || (correct && single)
+                  ? GOOD
+                  : BAD
+                : correct && !free
+                  ? GOOD
+                  : null
+            return (
+              <g
+                key={k}
+                onClick={onBubbleClick ? () => onBubbleClick(i, k) : undefined}
+                style={onBubbleClick ? { cursor: 'pointer' } : undefined}
+              >
+                <circle cx={b.cx} cy={b.cy} r={b.r} fill={marked ? '#3a3a3a' : '#fff'} stroke={BUBBLE} strokeWidth={0.25 * L.answer.scale} />
+                {!marked && (
+                  <text x={b.cx} y={b.cy} textAnchor="middle" dominantBaseline="central" fontSize={b.r * 1.05} fill={LABEL}>
+                    {labels[k]}
+                  </text>
+                )}
+                {ring && (
+                  <circle
+                    cx={b.cx}
+                    cy={b.cy}
+                    r={b.r + 0.55}
+                    fill="none"
+                    stroke={ring}
+                    strokeWidth={0.7}
+                    strokeDasharray={marked ? undefined : '1 0.7'}
+                  />
+                )}
+              </g>
+            )
+          })}
         </g>
       ))}
 

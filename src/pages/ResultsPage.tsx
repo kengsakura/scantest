@@ -1,11 +1,9 @@
-import { Fragment, useState } from 'react'
 import { removeExam, removeScan, scansOf, studentsOf, useDB, useExamScans } from '../data/store'
 import type { ScanRecord, Student } from '../data/types'
 import { formatDate, formatScore } from '../lib/exam'
 import { go } from '../lib/router'
 import { choiceLabels } from '../omr/config'
 import { grade, maxScore, missingAnswers } from '../omr/grading'
-import { GradeStrip } from './GradeStrip'
 import { NameImage, StudentPicker } from './StudentPicker'
 
 interface Row {
@@ -30,7 +28,6 @@ function downloadCsv(filename: string, rows: (string | number)[][]) {
 export function ResultsPage({ examId }: { examId: string }) {
   const db = useDB()
   const exam = db.exams.find((e) => e.id === examId)
-  const [open, setOpen] = useState<string | null>(null)
   useExamScans(examId)
   if (!exam) return <p>ไม่พบข้อสอบ</p>
 
@@ -86,6 +83,9 @@ export function ResultsPage({ examId }: { examId: string }) {
           </p>
         </div>
         <div className="head-actions">
+          <a className={`btn secondary ${scans.length ? '' : 'disabled'}`} href={scans.length ? `#/exams/${exam.id}/analysis` : undefined}>
+            วิเคราะห์ข้อสอบ
+          </a>
           <a className="btn secondary" href={`#/exams/${exam.id}/key`}>
             เฉลย
           </a>
@@ -131,6 +131,9 @@ export function ResultsPage({ examId }: { examId: string }) {
                 <div className="match-row">
                   <strong className="match-score">{formatScore(grade(scan.answers, exam.key).score)}</strong>
                   <StudentPicker exam={exam} scan={scan} />
+                  <a className="btn secondary small" href={`#/exams/${exam.id}/paper/${scan.id}`}>
+                    ดูกระดาษ
+                  </a>
                   <button className="btn ghost small danger" onClick={() => confirm('ลบผลสแกนนี้?') && removeScan(scan.id)}>
                     ลบ
                   </button>
@@ -165,44 +168,28 @@ export function ResultsPage({ examId }: { examId: string }) {
             </tr>
           </thead>
           <tbody>
-            {rows.filter((r) => r.student).map(({ student, scan }) => {
-              const key = scan?.id ?? student!.id
-              const g = scan ? grade(scan.answers, exam.key) : null
-              return (
-                <Fragment key={key}>
-                  <tr className={scan ? 'clickable' : 'absent'} onClick={() => scan && setOpen(open === key ? null : key)}>
-                    <td>{student?.number ?? '–'}</td>
-                    <td>{student?.code ?? scan?.studentCode ?? '?'}</td>
+            {rows
+              .filter((r) => r.student)
+              .map(({ student, scan }) => {
+                const g = scan ? grade(scan.answers, exam.key) : null
+                return (
+                  <tr
+                    key={student!.id}
+                    className={scan ? 'clickable' : 'absent'}
+                    onClick={() => scan && go(`/exams/${exam.id}/paper/${scan.id}`)}
+                  >
+                    <td>{student!.number}</td>
+                    <td>{student!.code}</td>
                     <td>
-                      {student?.name ?? <span className="badge warn">{scan?.studentCode ? 'ไม่พบในห้อง' : 'อ่านรหัสไม่ได้'}</span>}
+                      {student!.name}
                       {scan && scan.uncertain.length > 0 && <span className="badge warn">ตรวจทาน</span>}
                     </td>
                     <td className="num">{g ? <strong>{formatScore(g.score)}</strong> : <span className="muted">ยังไม่สแกน</span>}</td>
                     <td className="hide-sm muted small">{scan ? formatDate(scan.scannedAt) : ''}</td>
-                    <td className="num">{scan ? (open === key ? '▲' : '▼') : ''}</td>
+                    <td className="num muted">{scan ? '›' : ''}</td>
                   </tr>
-                  {scan && open === key && (
-                    <tr className="detail">
-                      <td colSpan={6}>
-                        <NameImage scan={scan} />
-                        <GradeStrip status={g!.status} />
-                        {scan.uncertain.length > 0 && <p className="hint warn">ฝนไม่ชัด: ข้อ {scan.uncertain.join(', ')}</p>}
-                        <div className="detail-actions">
-                          <span className="muted small">ไม่ใช่คนนี้? เปลี่ยนเป็น</span>
-                          <StudentPicker exam={exam} scan={scan} />
-                        </div>
-                        <button
-                          className="btn ghost small danger"
-                          onClick={() => confirm('ลบผลสแกนนี้?') && removeScan(scan.id)}
-                        >
-                          ลบผลสแกนนี้
-                        </button>
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
-              )
-            })}
+                )
+              })}
           </tbody>
         </table>
       </div>

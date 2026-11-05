@@ -210,6 +210,9 @@ export const api = {
     check(await sb().from('scans').delete().eq('exam_id', s.examId).eq('student_code', studentCode).neq('id', s.id))
     check(await sb().from('scans').update({ student_code: studentCode }).eq('id', s.id))
   },
+  async updateScanAnswers(id: string, answers: number[][]) {
+    check(await sb().from('scans').update({ answers, uncertain: [] }).eq('id', id))
+  },
   async removeScan(id: string) {
     check(await sb().from('scans').delete().eq('id', id))
   },
