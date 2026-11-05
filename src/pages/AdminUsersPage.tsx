@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { addUser, removeUser, updateSettings, updateUser, useCurrentUser, useDB } from '../data/store'
+import { addUser, CLOUD, removeAllowedEmail, removeUser, updateSettings, updateUser, useCurrentUser, useDB } from '../data/store'
 import type { Role } from '../data/types'
 import { MAX_ID_DIGITS, MIN_ID_DIGITS } from '../omr/config'
 
@@ -9,6 +9,8 @@ export function AdminUsersPage() {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [role, setRole] = useState<Role>('teacher')
+  const pending = db.users.filter((u) => u.role === 'pending')
+  const members = db.users.filter((u) => u.role !== 'pending')
 
   return (
     <section>
@@ -37,8 +39,39 @@ export function AdminUsersPage() {
         </label>
       </div>
 
+      {CLOUD && pending.length > 0 && (
+        <div className="card attention">
+          <h2>รออนุมัติ ({pending.length})</h2>
+          <table className="table">
+            <tbody>
+              {pending.map((u) => (
+                <tr key={u.id}>
+                  <td>
+                    {u.name}
+                    <div className="muted small">{u.email}</div>
+                  </td>
+                  <td className="num">
+                    <div className="head-actions end">
+                      <button className="btn small" onClick={() => updateUser(u.id, { role: 'teacher' })}>
+                        อนุมัติเป็นครู
+                      </button>
+                      <button className="btn secondary small" onClick={() => updateUser(u.id, { role: 'admin' })}>
+                        เป็นผู้ดูแลระบบ
+                      </button>
+                      <button className="btn ghost small danger" onClick={() => confirm(`ปฏิเสธ ${u.name}?`) && removeUser(u.id)}>
+                        ปฏิเสธ
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       <div className="card">
-        <h2>ผู้ใช้ ({db.users.length})</h2>
+        <h2>ผู้ใช้ ({members.length})</h2>
         <table className="table">
           <thead>
             <tr>
@@ -49,7 +82,7 @@ export function AdminUsersPage() {
             </tr>
           </thead>
           <tbody>
-            {db.users.map((u) => (
+            {members.map((u) => (
               <tr key={u.id}>
                 <td>{u.name}</td>
                 <td className="hide-sm">{u.email}</td>
@@ -70,11 +103,32 @@ export function AdminUsersPage() {
             ))}
           </tbody>
         </table>
+        {CLOUD && (
+          <>
+            <h2 className="mt">อีเมลที่อนุมัติล่วงหน้า</h2>
+            <p className="hint">ครูที่สมัครด้วยอีเมลเหล่านี้จะใช้งานได้ทันทีโดยไม่ต้องรออนุมัติ</p>
+            {db.allowedEmails.length > 0 && (
+              <ul className="plain-list">
+                {db.allowedEmails.map((a) => (
+                  <li key={a.email}>
+                    <span>
+                      {a.name ? `${a.name} · ` : ''}
+                      {a.email} <span className="muted small">({a.role === 'admin' ? 'ผู้ดูแลระบบ' : 'ครู'})</span>
+                    </span>
+                    <button className="btn ghost small danger" onClick={() => removeAllowedEmail(a.email)}>
+                      ลบ
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
+        )}
         <form
           className="inline-form wrap"
           onSubmit={(e) => {
             e.preventDefault()
-            if (!name.trim()) return
+            if (!name.trim() || (CLOUD && !email.trim())) return
             addUser({ name: name.trim(), email: email.trim(), role })
             setName('')
             setEmail('')
@@ -86,8 +140,8 @@ export function AdminUsersPage() {
             <option value="teacher">ครู</option>
             <option value="admin">ผู้ดูแลระบบ</option>
           </select>
-          <button className="btn small" disabled={!name.trim()}>
-            เพิ่มผู้ใช้
+          <button className="btn small" disabled={!name.trim() || (CLOUD && !email.trim())}>
+            {CLOUD ? 'อนุมัติอีเมลล่วงหน้า' : 'เพิ่มผู้ใช้'}
           </button>
         </form>
       </div>

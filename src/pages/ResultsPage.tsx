@@ -1,5 +1,5 @@
 import { Fragment, useState } from 'react'
-import { removeExam, removeScan, scansOf, studentsOf, useDB } from '../data/store'
+import { removeExam, removeScan, scansOf, studentsOf, useDB, useExamScans } from '../data/store'
 import type { ScanRecord, Student } from '../data/types'
 import { formatDate, formatScore } from '../lib/exam'
 import { go } from '../lib/router'
@@ -30,6 +30,7 @@ export function ResultsPage({ examId }: { examId: string }) {
   const db = useDB()
   const exam = db.exams.find((e) => e.id === examId)
   const [open, setOpen] = useState<string | null>(null)
+  useExamScans(examId)
   if (!exam) return <p>ไม่พบข้อสอบ</p>
 
   const room = db.classrooms.find((c) => c.id === exam.classroomId)

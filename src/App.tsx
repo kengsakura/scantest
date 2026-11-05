@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { logout, useCurrentUser, useDB } from './data/store'
+import { CLOUD, dismissError, logout, useAppState, useCurrentUser, useDB } from './data/store'
 import { go, useRoute } from './lib/router'
 import { AdminClassesPage } from './pages/AdminClassesPage'
 import { AdminUsersPage } from './pages/AdminUsersPage'
@@ -15,7 +15,13 @@ export default function App() {
   const user = useCurrentUser()
   const route = useRoute()
   const db = useDB()
-  if (!user) return <LoginPage />
+  const { phase, error } = useAppState()
+  if (phase === 'starting' || phase === 'loading') return <div className="splash">กำลังโหลด…</div>
+  if (phase === 'signed-out' || !user) {
+    if (CLOUD && phase === 'ready') return <PendingPage reason="no-profile" error={error} />
+    return <LoginPage />
+  }
+  if (user.role === 'pending') return <PendingPage reason="pending" error={error} />
 
   const [section, id, sub] = route
   let page: ReactNode
@@ -61,8 +67,40 @@ export default function App() {
           </button>
         </div>
       </header>
-      <div className="demo-banner no-print">โหมดทดลอง: ข้อมูลเก็บในเบราว์เซอร์เครื่องนี้เท่านั้น (ยังไม่เชื่อมฐานข้อมูลกลาง)</div>
+      {!CLOUD && <div className="demo-banner no-print">โหมดทดลอง: ข้อมูลเก็บในเบราว์เซอร์เครื่องนี้เท่านั้น (ยังไม่เชื่อมฐานข้อมูลกลาง)</div>}
+      {error && (
+        <div className="error-bar no-print" role="alert">
+          <span>{error}</span>
+          <button className="btn ghost small" onClick={dismissError}>
+            ปิด
+          </button>
+        </div>
+      )}
       <main className="content">{page}</main>
+    </div>
+  )
+}
+
+function PendingPage({ reason, error }: { reason: 'pending' | 'no-profile'; error: string | null }) {
+  return (
+    <div className="login">
+      <div className="card login-card">
+        <h1>{reason === 'pending' ? 'รอผู้ดูแลระบบอนุมัติ' : 'ไม่พบบัญชีผู้ใช้'}</h1>
+        <p className="muted">
+          {reason === 'pending'
+            ? 'สมัครเรียบร้อยแล้ว ให้ผู้ดูแลระบบของโรงเรียนอนุมัติบัญชีของคุณ (หน้า ผู้ใช้ & ตั้งค่า) แล้วกดรีเฟรชหน้านี้'
+            : 'บัญชีนี้ยังไม่มีข้อมูลผู้ใช้ในระบบ หรือถูกลบไปแล้ว ติดต่อผู้ดูแลระบบ'}
+        </p>
+        {error && <p className="hint warn">{error}</p>}
+        <div className="head-actions">
+          <button className="btn" onClick={() => window.location.reload()}>
+            รีเฟรช
+          </button>
+          <button className="btn secondary" onClick={logout}>
+            ออกจากระบบ
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

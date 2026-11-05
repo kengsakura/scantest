@@ -1,7 +1,8 @@
 import type { LabelStyle } from '../omr/config'
 import type { AnswerKey } from '../omr/grading'
 
-export type Role = 'admin' | 'teacher'
+/** 'pending' = signed up but not yet approved by an admin (cloud mode only) */
+export type Role = 'admin' | 'teacher' | 'pending'
 
 export interface User {
   id: string
@@ -64,9 +65,19 @@ export interface Settings {
   idDigits: number
 }
 
+/** Email an admin pre-approved; signing up with it skips the approval step */
+export interface AllowedEmail {
+  email: string
+  name: string | null
+  role: Role
+}
+
 export interface Database {
   version: 1
   users: User[]
+  allowedEmails: AllowedEmail[]
+  /** Scans per exam as counted by the server (cloud mode, before an exam's scans are loaded) */
+  scanCounts: Record<string, number>
   classrooms: Classroom[]
   students: Student[]
   exams: Exam[]

@@ -285,6 +285,26 @@ textarea {
   margin-bottom: 0.2rem;
 }
 
+.error-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  background: var(--bad-soft);
+  color: var(--bad);
+  font-weight: 600;
+  padding: 0.3rem 1rem;
+  position: sticky;
+  top: 0;
+  z-index: 11;
+}
+.splash {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+
 /* ---- login ---- */
 .login {
   min-height: 100vh;
@@ -330,6 +350,44 @@ textarea {
 }
 .user-pick .btn {
   justify-content: space-between;
+}
+.login-card form {
+  display: grid;
+  gap: 0.75rem;
+}
+.login-card label {
+  display: grid;
+  gap: 0.3rem;
+  font-weight: 600;
+}
+.tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  background: var(--bg);
+  border-radius: 10px;
+  padding: 3px;
+}
+.tabs button {
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  padding: 0.5rem;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--muted);
+}
+.tabs button.on {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow);
+}
+.notice {
+  background: var(--ok-soft);
+  color: var(--ok);
+  padding: 0.6rem 0.8rem;
+  border-radius: 9px;
+  margin: 0;
 }
 .user-pick small {
   color: var(--muted);
@@ -884,6 +942,34 @@ label.inline.grow input {
   gap: 0.75rem;
   flex-wrap: wrap;
   margin-top: 0.5rem;
+}
+
+.attention {
+  border-color: #f0d68a;
+  margin-bottom: 1rem;
+}
+.form + .card,
+.card + .card {
+  margin-top: 1rem;
+}
+h2.mt {
+  margin-top: 1.5rem;
+}
+.head-actions.end {
+  justify-content: flex-end;
+}
+.plain-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.plain-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.35rem 0;
+  border-top: 1px solid var(--line);
 }
 
 /* ---- small screens ---- */

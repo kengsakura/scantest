@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { getDB, saveScan, scansOf, setScanStudent, studentsOf, useDB } from '../data/store'
+import { CLOUD, getDB, saveScan, scansOf, setScanStudent, studentsOf, useAppState, useDB, useExamScans } from '../data/store'
 import type { Exam, ScanRecord, User } from '../data/types'
 import { formatScore } from '../lib/exam'
 import { grade, missingAnswers } from '../omr/grading'
@@ -48,6 +48,8 @@ export function ScanPage({ examId, user }: { examId: string; user: User }) {
 
 function Scanner({ exam, user }: { exam: Exam; user: User }) {
   const db = useDB()
+  const { outbox } = useAppState()
+  useExamScans(exam.id)
   const videoRef = useRef<HTMLVideoElement>(null)
   const overlayRef = useRef<HTMLCanvasElement>(null)
   const grabRef = useRef<HTMLCanvasElement | null>(null)
@@ -288,6 +290,12 @@ function Scanner({ exam, user }: { exam: Exam; user: User }) {
           <h1>สแกนกระดาษคำตอบ</h1>
           <p className="muted">
             สแกนแล้ว {scans.length}/{students.length} คน · รหัสแบบ {exam.code}
+            {CLOUD &&
+              (outbox > 0 ? (
+                <span className="badge warn">รอส่งขึ้นเซิร์ฟเวอร์ {outbox} แผ่น</span>
+              ) : (
+                <span className="badge ok">ข้อมูลขึ้นเซิร์ฟเวอร์ครบแล้ว</span>
+              ))}
           </p>
         </div>
       </div>

@@ -1,4 +1,4 @@
-import { scansOf, studentsOf, useDB, visibleExams } from '../data/store'
+import { scanCount, studentsOf, useDB, visibleExams } from '../data/store'
 import type { User } from '../data/types'
 import { formatDate } from '../lib/exam'
 import { go } from '../lib/router'
@@ -32,7 +32,7 @@ export function ExamsPage({ user }: { user: User }) {
           {exams.map((e) => {
             const room = db.classrooms.find((c) => c.id === e.classroomId)
             const total = studentsOf(db, e.classroomId).length
-            const scanned = scansOf(db, e.id).length
+            const scanned = scanCount(db, e.id)
             const missing = missingAnswers(e.key).length
             const owner = db.users.find((u) => u.id === e.ownerId)
             return (
