@@ -114,6 +114,23 @@ function check<T>(res: { data: T; error: { message: string; code?: string } | nu
   return res.data
 }
 
+const PAGE = 1000 // Supabase's default cap on rows per request
+
+/**
+ * Fetch every row of a query, a page at a time. `make` must build the query with a
+ * stable order (ending in a unique column) so pages don't overlap or skip rows.
+ */
+export async function selectAll<T>(
+  make: () => { range: (from: number, to: number) => PromiseLike<{ data: unknown; error: { message: string; code?: string } | null }> },
+): Promise<T[]> {
+  const out: T[] = []
+  for (let from = 0; ; from += PAGE) {
+    const rows = check(await make().range(from, from + PAGE - 1)) as T[]
+    out.push(...rows)
+    if (rows.length < PAGE) return out
+  }
+}
+
 /** Everything the signed-in user can see, except scans (loaded per exam). */
 export async function fetchAll(userId: string): Promise<Partial<Database> & { me: User | null }> {
   const c = sb()
@@ -122,24 +139,26 @@ export async function fetchAll(userId: string): Promise<Partial<Database> & { me
   if (!me || me.role === 'pending') return { me, users: me ? [me] : [] }
 
   const [profiles, classrooms, students, exams, settings, counts, allowed] = await Promise.all([
-    c.from('profiles').select('*').order('name'),
-    c.from('classrooms').select('id,name').order('name'),
-    c.from('students').select('*').order('number'),
-    c.from('exams').select('*').order('created_at', { ascending: false }),
+    selectAll<ProfileRow>(() => c.from('profiles').select('*').order('name').order('id')),
+    selectAll<Classroom>(() => c.from('classrooms').select('id,name').order('name').order('id')),
+    selectAll<StudentRow>(() => c.from('students').select('*').order('number').order('id')),
+    selectAll<ExamRow>(() => c.from('exams').select('*').order('created_at', { ascending: false }).order('id')),
     c.from('settings').select('school_name,id_digits').eq('id', 1).maybeSingle(),
-    c.from('exam_scan_counts').select('exam_id,n'),
-    me.role === 'admin' ? c.from('allowed_emails').select('email,name,role').order('email') : Promise.resolve({ data: [], error: null }),
+    selectAll<{ exam_id: string; n: number }>(() => c.from('exam_scan_counts').select('exam_id,n').order('exam_id')),
+    me.role === 'admin'
+      ? selectAll<AllowedEmail>(() => c.from('allowed_emails').select('email,name,role').order('email'))
+      : Promise.resolve([] as AllowedEmail[]),
   ])
   const s = check(settings) as SettingsRow | null
   return {
     me,
-    users: (check(profiles) as ProfileRow[]).map(fromProfile),
-    classrooms: check(classrooms) as Classroom[],
-    students: (check(students) as StudentRow[]).map(fromStudent),
-    exams: (check(exams) as ExamRow[]).map(fromExam),
+    users: profiles.map(fromProfile),
+    classrooms,
+    students: students.map(fromStudent),
+    exams: exams.map(fromExam),
     settings: s ? { schoolName: s.school_name, idDigits: s.id_digits } : undefined,
-    scanCounts: Object.fromEntries((check(counts) as { exam_id: string; n: number }[]).map((r) => [r.exam_id, r.n])),
-    allowedEmails: check(allowed) as AllowedEmail[],
+    scanCounts: Object.fromEntries(counts.map((r) => [r.exam_id, r.n])),
+    allowedEmails: allowed,
   }
 }
 
@@ -147,13 +166,14 @@ export async function fetchAll(userId: string): Promise<Partial<Database> & { me
 const SCAN_COLUMNS = 'id,exam_id,student_code,answers,uncertain,scanned_at,scanned_by'
 
 export async function fetchScans(examId: string): Promise<ScanRecord[]> {
-  const rows = check(await sb().from('scans').select(SCAN_COLUMNS).eq('exam_id', examId)) as ScanRow[]
+  const rows = await selectAll<ScanRow>(() => sb().from('scans').select(SCAN_COLUMNS).eq('exam_id', examId).order('id'))
   return rows.map(fromScan)
 }
 
-export async function fetchNameImage(scanId: string): Promise<string | null> {
-  const row = check(await sb().from('scans').select('name_image').eq('id', scanId).maybeSingle()) as { name_image: string | null } | null
-  return row?.name_image ?? null
+/** Name pictures for several scans in one request. */
+export async function fetchNameImages(scanIds: string[]): Promise<Map<string, string | null>> {
+  const rows = check(await sb().from('scans').select('id,name_image').in('id', scanIds)) as { id: string; name_image: string | null }[]
+  return new Map(rows.map((r) => [r.id, r.name_image]))
 }
 
 /* ---- writes (each throws on failure) ---- */

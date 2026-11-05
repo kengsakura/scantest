@@ -135,59 +135,62 @@ alter table public.students enable row level security;
 alter table public.exams enable row level security;
 alter table public.scans enable row level security;
 
+-- Performance: helper calls are wrapped in (select ...) so Postgres evaluates them
+-- once per query instead of once per row (matters once scans has thousands of rows).
+
 -- profiles: members see everyone, anyone sees themselves; only admins change roles
 drop policy if exists profiles_select on public.profiles;
 create policy profiles_select on public.profiles for select to authenticated
-  using (id = auth.uid() or public.is_member());
+  using (id = (select auth.uid()) or (select public.is_member()));
 drop policy if exists profiles_admin_update on public.profiles;
 create policy profiles_admin_update on public.profiles for update to authenticated
-  using (public.is_admin()) with check (public.is_admin());
+  using ((select public.is_admin())) with check ((select public.is_admin()));
 drop policy if exists profiles_admin_delete on public.profiles;
 create policy profiles_admin_delete on public.profiles for delete to authenticated
-  using (public.is_admin() and id <> auth.uid());
+  using ((select public.is_admin()) and id <> (select auth.uid()));
 
 drop policy if exists allowed_emails_admin on public.allowed_emails;
 create policy allowed_emails_admin on public.allowed_emails for all to authenticated
-  using (public.is_admin()) with check (public.is_admin());
+  using ((select public.is_admin())) with check ((select public.is_admin()));
 
 drop policy if exists settings_select on public.settings;
-create policy settings_select on public.settings for select to authenticated using (public.is_member());
+create policy settings_select on public.settings for select to authenticated using ((select public.is_member()));
 drop policy if exists settings_admin on public.settings;
 create policy settings_admin on public.settings for update to authenticated
-  using (public.is_admin()) with check (public.is_admin());
+  using ((select public.is_admin())) with check ((select public.is_admin()));
 
 drop policy if exists classrooms_select on public.classrooms;
-create policy classrooms_select on public.classrooms for select to authenticated using (public.is_member());
+create policy classrooms_select on public.classrooms for select to authenticated using ((select public.is_member()));
 drop policy if exists classrooms_admin on public.classrooms;
 create policy classrooms_admin on public.classrooms for all to authenticated
-  using (public.is_admin()) with check (public.is_admin());
+  using ((select public.is_admin())) with check ((select public.is_admin()));
 
 drop policy if exists students_select on public.students;
-create policy students_select on public.students for select to authenticated using (public.is_member());
+create policy students_select on public.students for select to authenticated using ((select public.is_member()));
 drop policy if exists students_admin on public.students;
 create policy students_admin on public.students for all to authenticated
-  using (public.is_admin()) with check (public.is_admin());
+  using ((select public.is_admin())) with check ((select public.is_admin()));
 
 -- exams: teachers see and edit their own, admins see all
 drop policy if exists exams_select on public.exams;
 create policy exams_select on public.exams for select to authenticated
-  using (public.is_admin() or (owner_id = auth.uid() and public.is_member()));
+  using ((select public.is_admin()) or (owner_id = (select auth.uid()) and (select public.is_member())));
 drop policy if exists exams_insert on public.exams;
 create policy exams_insert on public.exams for insert to authenticated
-  with check (owner_id = auth.uid() and public.is_member());
+  with check (owner_id = (select auth.uid()) and (select public.is_member()));
 drop policy if exists exams_update on public.exams;
 create policy exams_update on public.exams for update to authenticated
-  using (public.is_admin() or (owner_id = auth.uid() and public.is_member()))
-  with check (public.is_admin() or owner_id = auth.uid());
+  using ((select public.is_admin()) or (owner_id = (select auth.uid()) and (select public.is_member())))
+  with check ((select public.is_admin()) or owner_id = (select auth.uid()));
 drop policy if exists exams_delete on public.exams;
 create policy exams_delete on public.exams for delete to authenticated
-  using (public.is_admin() or (owner_id = auth.uid() and public.is_member()));
+  using ((select public.is_admin()) or (owner_id = (select auth.uid()) and (select public.is_member())));
 
--- scans follow their exam
+-- scans follow their exam: the list of visible exams is computed once per query
 drop policy if exists scans_all on public.scans;
 create policy scans_all on public.scans for all to authenticated
-  using (exists (select 1 from public.exams e where e.id = exam_id))
-  with check (exists (select 1 from public.exams e where e.id = exam_id));
+  using (exam_id in (select e.id from public.exams e))
+  with check (exam_id in (select e.id from public.exams e));
 
 -- live updates of scans (results page refreshes while someone else scans)
 do $$ begin

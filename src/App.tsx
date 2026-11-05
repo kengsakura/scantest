@@ -1,17 +1,19 @@
-import type { ReactNode } from 'react'
+import { lazy, Suspense, type ReactNode } from 'react'
 import { CLOUD, dismissError, logout, useAppState, useCurrentUser, useDB } from './data/store'
 import { go, useRoute } from './lib/router'
-import { AdminClassesPage } from './pages/AdminClassesPage'
-import { AdminUsersPage } from './pages/AdminUsersPage'
-import { AnalysisPage } from './pages/AnalysisPage'
 import { ExamsPage } from './pages/ExamsPage'
-import { KeyPage } from './pages/KeyPage'
 import { LoginPage } from './pages/LoginPage'
-import { NewExamPage } from './pages/NewExamPage'
-import { PaperPage } from './pages/PaperPage'
-import { PrintPage } from './pages/PrintPage'
-import { ResultsPage } from './pages/ResultsPage'
-import { ScanPage } from './pages/ScanPage'
+
+// Pages load on demand so the first screen (login / exam list) downloads less on phones.
+const AdminClassesPage = lazy(() => import('./pages/AdminClassesPage').then((m) => ({ default: m.AdminClassesPage })))
+const AdminUsersPage = lazy(() => import('./pages/AdminUsersPage').then((m) => ({ default: m.AdminUsersPage })))
+const AnalysisPage = lazy(() => import('./pages/AnalysisPage').then((m) => ({ default: m.AnalysisPage })))
+const KeyPage = lazy(() => import('./pages/KeyPage').then((m) => ({ default: m.KeyPage })))
+const NewExamPage = lazy(() => import('./pages/NewExamPage').then((m) => ({ default: m.NewExamPage })))
+const PaperPage = lazy(() => import('./pages/PaperPage').then((m) => ({ default: m.PaperPage })))
+const PrintPage = lazy(() => import('./pages/PrintPage').then((m) => ({ default: m.PrintPage })))
+const ResultsPage = lazy(() => import('./pages/ResultsPage').then((m) => ({ default: m.ResultsPage })))
+const ScanPage = lazy(() => import('./pages/ScanPage').then((m) => ({ default: m.ScanPage })))
 
 export default function App() {
   const user = useCurrentUser()
@@ -26,17 +28,17 @@ export default function App() {
   if (user.role === 'pending') return <PendingPage reason="pending" error={error} />
 
   const [section, id, sub, extra] = route
-  let page: ReactNode
-  if (section === 'exams' && id === 'new') page = <NewExamPage user={user} />
-  else if (section === 'exams' && id && sub === 'key') page = <KeyPage examId={id} />
-  else if (section === 'exams' && id && sub === 'print') page = <PrintPage examId={id} />
-  else if (section === 'exams' && id && sub === 'scan') page = <ScanPage examId={id} user={user} />
-  else if (section === 'exams' && id && sub === 'paper' && extra) page = <PaperPage examId={id} scanId={extra} />
-  else if (section === 'exams' && id && sub === 'analysis') page = <AnalysisPage examId={id} />
-  else if (section === 'exams' && id) page = <ResultsPage examId={id} />
-  else if (section === 'classes' && user.role === 'admin') page = <AdminClassesPage selectedId={id} />
-  else if (section === 'users' && user.role === 'admin') page = <AdminUsersPage />
-  else page = <ExamsPage user={user} />
+  let content: ReactNode
+  if (section === 'exams' && id === 'new') content = <NewExamPage user={user} />
+  else if (section === 'exams' && id && sub === 'key') content = <KeyPage examId={id} />
+  else if (section === 'exams' && id && sub === 'print') content = <PrintPage examId={id} />
+  else if (section === 'exams' && id && sub === 'scan') content = <ScanPage examId={id} user={user} />
+  else if (section === 'exams' && id && sub === 'paper' && extra) content = <PaperPage examId={id} scanId={extra} />
+  else if (section === 'exams' && id && sub === 'analysis') content = <AnalysisPage examId={id} />
+  else if (section === 'exams' && id) content = <ResultsPage examId={id} />
+  else if (section === 'classes' && user.role === 'admin') content = <AdminClassesPage selectedId={id} />
+  else if (section === 'users' && user.role === 'admin') content = <AdminUsersPage />
+  else content = <ExamsPage user={user} />
 
   const nav = (path: string, label: string) => (
     <a href={`#/${path}`} className={section === path || (!section && path === 'exams') ? 'active' : ''}>
@@ -80,7 +82,9 @@ export default function App() {
           </button>
         </div>
       )}
-      <main className="content">{page}</main>
+      <main className="content">
+        <Suspense fallback={<p className="muted">กำลังโหลด…</p>}>{content}</Suspense>
+      </main>
     </div>
   )
 }

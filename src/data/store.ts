@@ -9,10 +9,10 @@
  * - local (no Supabase): everything lives in this browser's localStorage, with
  *   a pick-a-user demo login.
  */
-import { useEffect, useState, useSyncExternalStore } from 'react'
+import { useEffect, useSyncExternalStore } from 'react'
 import { randomExamCode } from '../omr/config'
 import { emptyKey, type AnswerKey } from '../omr/grading'
-import { api, CLOUD, fetchAll, fetchNameImage, fetchScans, fromScan, isNetworkError, supabase, thaiError } from './cloud'
+import { api, CLOUD, fetchAll, fetchNameImages, fetchScans, fromScan, isNetworkError, supabase, thaiError } from './cloud'
 import type { AllowedEmail, Classroom, Database, Exam, Role, ScanRecord, Settings, SheetType, Student, User } from './types'
 
 const DB_KEY = 'scantest.db.v1'
@@ -377,29 +377,46 @@ export function visibleExams(d: Database, user: User): Exam[] {
 /* ------------------------------------------------------------------ */
 
 const nameImages = new Map<string, string | null>()
+const requestedImages = new Set<string>()
+let imageBatch = new Set<string>()
+let imageTimer = 0
+
+/** Collect the pictures requested during one render pass and fetch them in a single query. */
+function requestNameImage(id: string) {
+  if (requestedImages.has(id)) return
+  requestedImages.add(id)
+  imageBatch.add(id)
+  if (!imageTimer) imageTimer = window.setTimeout(flushImageBatch, 20)
+}
+
+async function flushImageBatch() {
+  imageTimer = 0
+  const ids = [...imageBatch]
+  imageBatch = new Set()
+  for (let i = 0; i < ids.length; i += 50) {
+    const chunk = ids.slice(i, i + 50)
+    try {
+      const found = await fetchNameImages(chunk)
+      for (const id of chunk) nameImages.set(id, found.get(id) ?? null)
+    } catch {
+      chunk.forEach((id) => requestedImages.delete(id)) // allow a retry on next view
+    }
+    emit()
+  }
+}
 
 /** The scan's name picture, fetched from the server the first time it is needed. */
 export function useNameImage(scan: ScanRecord | null): string | null | undefined {
-  const [, rerender] = useState(0)
   const id = scan?.id
+  const fetched = useSyncExternalStore(subscribe, () => (id ? nameImages.get(id) : undefined))
   const missing = scan !== null && scan.nameImage === undefined
   useEffect(() => {
-    if (!CLOUD || !id || !missing || nameImages.has(id)) return
-    let alive = true
-    fetchNameImage(id)
-      .then((img) => {
-        nameImages.set(id, img)
-        if (alive) rerender((n) => n + 1)
-      })
-      .catch(() => {})
-    return () => {
-      alive = false
-    }
+    if (CLOUD && id && missing) requestNameImage(id)
   }, [id, missing])
   if (!scan) return null
   if (scan.nameImage !== undefined) return scan.nameImage
   if (!CLOUD) return null // nothing to fetch in local demo mode
-  return nameImages.get(scan.id)
+  return fetched
 }
 
 export function scansOf(d: Database, examId: string): ScanRecord[] {

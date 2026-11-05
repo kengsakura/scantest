@@ -145,7 +145,8 @@ const cases: Case[] = [
   },
 ]
 
-describe('scanner (synthetic photos)', () => {
+// rendering the synthetic photos is slow (the scanner itself takes well under a second)
+describe('scanner (synthetic photos)', { timeout: 30_000 }, () => {
   for (const c of cases) {
     it(c.name, () => {
       const answers = answersFor(c.cfg, c.cfg.questions + c.w)

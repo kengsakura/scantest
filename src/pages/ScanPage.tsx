@@ -3,7 +3,8 @@ import { CLOUD, getDB, saveScan, scansOf, studentsOf, useAppState, useDB, useExa
 import type { Exam, ScanRecord, User } from '../data/types'
 import { formatScore } from '../lib/exam'
 import { grade, missingAnswers } from '../omr/grading'
-import { SCAN_FAILURE_TEXT, type ScanResult, type ScanSuccess } from '../omr/scanner'
+import type { ScanResult, ScanSuccess } from '../omr/scanner'
+import { SCAN_FAILURE_TEXT } from '../scan/messages'
 import { grabFrame, grayToDataUrl, isInAppBrowser, ScanClient } from '../scan/scanClient'
 import { GradeStrip } from './GradeStrip'
 import { NameImage, StudentPicker } from './StudentPicker'
@@ -11,6 +12,16 @@ import { NameImage, StudentPicker } from './StudentPicker'
 type CameraState = 'idle' | 'starting' | 'live' | 'error'
 
 let audio: AudioContext | null = null
+
+/** iOS only plays sound from an AudioContext created/resumed during a tap. */
+function unlockAudio() {
+  try {
+    audio ??= new AudioContext()
+    void audio.resume()
+  } catch {
+    /* no audio */
+  }
+}
 function beep(ok: boolean) {
   try {
     navigator.vibrate?.(ok ? 60 : [40, 40, 40])
@@ -196,11 +207,14 @@ function Scanner({ exam, user }: { exam: Exam; user: User }) {
       L.busy = false
       if (wantLive.current) handle(result, frame.width, frame.height)
     }
+    // one shared timer: a restart while a frame was in flight must not start a second loop
+    window.clearTimeout(L.timer)
     L.timer = window.setTimeout(tick, 120)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [handle])
 
   const startCamera = useCallback(async () => {
+    unlockAudio()
     stopStream()
     setCamera('starting')
     setCameraError('')
@@ -221,6 +235,7 @@ function Scanner({ exam, user }: { exam: Exam; user: User }) {
       if (caps.focusMode?.includes('continuous'))
         await track.applyConstraints({ advanced: [{ focusMode: 'continuous' } as MediaTrackConstraintSet] }).catch(() => {})
       setCamera('live')
+      window.clearTimeout(loop.current.timer)
       loop.current.timer = window.setTimeout(tick, 200)
     } catch (err) {
       wantLive.current = false

@@ -117,12 +117,37 @@ function findBlobs(bin: Uint8Array, w: number, h: number): Blob[] {
   return blobs
 }
 
+/** Half-size copy (2x2 average). Marker search doesn't need full resolution. */
+function halfSize(img: GrayImage): GrayImage {
+  const w = img.width >> 1
+  const h = img.height >> 1
+  const src = img.data
+  const sw = img.width
+  const data = new Uint8Array(w * h)
+  for (let y = 0; y < h; y++) {
+    const r0 = 2 * y * sw
+    const r1 = r0 + sw
+    for (let x = 0; x < w; x++) {
+      const i = 2 * x
+      data[y * w + x] = (src[r0 + i] + src[r0 + i + 1] + src[r1 + i] + src[r1 + i + 1] + 2) >> 2
+    }
+  }
+  return { width: w, height: h, data }
+}
+
 function markerCandidates(img: GrayImage): Blob[] {
-  const bin = adaptiveThreshold(img)
+  // Thresholding and labelling every pixel is the costliest step, so do it at half
+  // size on large frames: 4x less work, and blob centroids stay sub-pixel accurate.
+  const f = Math.min(img.width, img.height) >= 600 ? 2 : 1
+  const work = f === 2 ? halfSize(img) : img
+  const bin = adaptiveThreshold(work)
   const minDim = Math.min(img.width, img.height)
   const minSide = minDim * 0.008
   const maxSide = minDim * 0.08
-  return findBlobs(bin, img.width, img.height).filter((b) => {
+  const blobs = findBlobs(bin, work.width, work.height).map((b) =>
+    f === 1 ? b : { area: b.area * f * f, cx: b.cx * f, cy: b.cy * f, w: b.w * f, h: b.h * f },
+  )
+  return blobs.filter((b) => {
     const side = Math.sqrt(b.area)
     if (side < minSide || side > maxSide) return false
     const aspect = b.w / b.h
@@ -226,13 +251,6 @@ export interface ScanFail {
 }
 
 export type ScanResult = ScanSuccess | ScanFail
-
-export const SCAN_FAILURE_TEXT: Record<ScanFailure, string> = {
-  'no-markers': 'ไม่พบมุมกระดาษครบ 4 มุม',
-  'too-small': 'กระดาษเล็กเกินไป ขยับกล้องเข้าใกล้',
-  'no-qr': 'อ่าน QR บนกระดาษไม่ได้',
-  'wrong-format': 'ไม่ใช่กระดาษคำตอบของระบบนี้',
-}
 
 function cross(o: Pt, a: Pt, b: Pt) {
   return (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x)
@@ -358,9 +376,28 @@ function cleanForStorage(img: GrayImage): GrayImage {
   return { ...img, data }
 }
 
+/** Smallest header region (mm) that holds the QR for every possible student-ID width. */
+const QR_REGION = (() => {
+  let x0 = Infinity
+  let x1 = -Infinity
+  let y0 = Infinity
+  let y1 = -Infinity
+  for (const idDigits of [0, 3, 4, 5, 6, 7, 8, 9, 10]) {
+    const res = computeLayout({ questions: 1, choices: 2, labelStyle: 'thai', idDigits, versions: 0, examCode: 'AAAAAA' })
+    if (!res.ok) continue
+    const q = res.layout.qr
+    x0 = Math.min(x0, q.x)
+    x1 = Math.max(x1, q.x + q.w)
+    y0 = Math.min(y0, q.y)
+    y1 = Math.max(y1, q.y + q.h)
+  }
+  const quiet = 3 // QR quiet zone the decoder needs to see
+  return { x: x0 - quiet, y: y0 - quiet, w: x1 - x0 + 2 * quiet, h: y1 - y0 + 2 * quiet }
+})()
+
 function readQr(img: GrayImage, H: Homography): string | null {
-  // The QR sits in the header's right half; its x position depends on the ID grid width.
-  const region = warpRegion(img, H, 100, 17, 102, 31, 6)
+  // 5 px/mm gives the 0.8 mm QR modules 4 px each, plenty for the decoder
+  const region = warpRegion(img, H, QR_REGION.x, QR_REGION.y, QR_REGION.w, QR_REGION.h, 5)
   const res = jsQR(region.data, region.width, region.height, { inversionAttempts: 'dontInvert' })
   return res ? res.data : null
 }

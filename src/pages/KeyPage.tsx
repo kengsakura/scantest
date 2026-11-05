@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { scansOf, updateExam, useDB } from '../data/store'
+import { scanCount, updateExam, useDB } from '../data/store'
 import { formatScore } from '../lib/exam'
 import { go } from '../lib/router'
 import { choiceLabels, LABELS } from '../omr/config'
@@ -55,7 +55,7 @@ export function KeyPage({ examId }: { examId: string }) {
 
   const labels = choiceLabels(exam.sheet)
   const missing = missingAnswers(key)
-  const hasScans = scansOf(db, exam.id).length > 0
+  const hasScans = scanCount(db, exam.id) > 0
 
   const edit = (fn: (k: AnswerKey) => void) => {
     const next = structuredClone(key)
