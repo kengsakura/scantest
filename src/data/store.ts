@@ -224,11 +224,6 @@ export async function signUp(email: string, password: string, name: string): Pro
   return { error: null, needsConfirm: !data.session }
 }
 
-export async function signInWithGoogle(): Promise<string | null> {
-  const { error } = await supabase!.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.origin } })
-  return error ? error.message : null
-}
-
 export function logout() {
   if (CLOUD) {
     void supabase!.auth.signOut()

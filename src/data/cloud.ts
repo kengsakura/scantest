@@ -15,18 +15,6 @@ export const supabase: SupabaseClient | null =
 
 export const CLOUD = supabase !== null
 
-/** Whether the Google sign-in provider is switched on in the Supabase project. */
-export async function googleEnabled(): Promise<boolean> {
-  if (!url || !key) return false
-  try {
-    const res = await fetch(`${url}/auth/v1/settings`, { headers: { apikey: key } })
-    const json = (await res.json()) as { external?: { google?: boolean } }
-    return json.external?.google === true
-  } catch {
-    return false
-  }
-}
-
 /* ---- rows ---- */
 
 interface ProfileRow {
