@@ -68,6 +68,12 @@ export function randomExamCode(length = 6): string {
   return Array.from(bytes, (b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join('')
 }
 
+/**
+ * Exam code printed on general-purpose sheets: they are not tied to one exam and
+ * can be used for any exam whose sheet has the same layout.
+ */
+export const GENERIC_CODE = '000000'
+
 export const DEFAULT_CONFIG: SheetConfig = {
   questions: 30,
   choices: 4,

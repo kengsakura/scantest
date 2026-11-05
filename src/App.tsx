@@ -7,6 +7,7 @@ import { LoginPage } from './pages/LoginPage'
 
 // Pages load on demand so the first screen (login / exam list) downloads less on phones.
 const AdminPage = lazy(() => import('./pages/admin/AdminPage').then((m) => ({ default: m.AdminPage })))
+const SheetsPage = lazy(() => import('./pages/SheetsPage').then((m) => ({ default: m.SheetsPage })))
 const ExportPage = lazy(() => import('./pages/ExportPage').then((m) => ({ default: m.ExportPage })))
 const AnalysisPage = lazy(() => import('./pages/AnalysisPage').then((m) => ({ default: m.AnalysisPage })))
 const KeyPage = lazy(() => import('./pages/KeyPage').then((m) => ({ default: m.KeyPage })))
@@ -39,6 +40,7 @@ export default function App() {
   else if (section === 'exams' && id && sub === 'analysis') content = <AnalysisPage examId={id} />
   else if (section === 'exams' && id && sub === 'export') content = <ExportPage examId={id} />
   else if (section === 'exams' && id) content = <ResultsPage examId={id} />
+  else if (section === 'sheets') content = <SheetsPage presetId={id} />
   else if (section === 'admin' && user.role === 'admin') content = <AdminPage tab={id} sub={sub} />
   else content = <ExamsPage user={user} />
 
@@ -62,6 +64,7 @@ export default function App() {
         </button>
         <nav>
           {nav('exams', 'ข้อสอบ')}
+          {nav('sheets', 'พิมพ์กระดาษ')}
           {user.role === 'admin' && nav('admin', 'จัดการระบบ')}
         </nav>
         <label className="term-pick" title="ภาคเรียนที่กำลังดู">

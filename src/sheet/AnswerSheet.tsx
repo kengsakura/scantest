@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { choiceLabels, encodeConfig, versionLabels, type SheetConfig } from '../omr/config'
+import { choiceLabels, encodeConfig, GENERIC_CODE, versionLabels, type SheetConfig } from '../omr/config'
 import { computeLayout, PAGE_H, PAGE_W } from '../omr/layout'
 import { qrMatrix, qrPath } from '../omr/qr'
 
@@ -122,7 +122,7 @@ export function AnswerSheet({
       {/* QR with the sheet layout + exam code */}
       <path d={qrPath(qr, L.qr.x, L.qr.y, L.qr.w)} fill="#000" />
       <text x={L.qr.x + L.qr.w / 2} y={L.qr.y + L.qr.h + 3.4} textAnchor="middle" fontSize={2.8} fill="#444" letterSpacing={0.3}>
-        {config.examCode}
+        {config.examCode === GENERIC_CODE ? 'กระดาษกลาง' : config.examCode}
       </text>
 
       {/* student ID grid */}

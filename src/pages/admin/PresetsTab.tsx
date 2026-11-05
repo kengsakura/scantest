@@ -33,6 +33,9 @@ export function PresetsTab() {
                 <button className="btn ghost small" disabled={i === presets.length - 1} onClick={() => movePreset(p.id, 1)} aria-label="เลื่อนลง">
                   ↓
                 </button>
+                <a className="btn secondary small" href={`#/sheets/${p.id}`}>
+                  พิมพ์
+                </a>
                 <button className="btn secondary small" onClick={() => setDraft({ ...p })}>
                   แก้ไข
                 </button>

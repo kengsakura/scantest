@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { CLOUD, getDB, saveScan, scansOf, studentsOf, useAppState, useDB, useExamScans } from '../data/store'
 import type { Exam, ScanRecord, User } from '../data/types'
-import { formatScore } from '../lib/exam'
+import { formatScore, sheetFitsExam } from '../lib/exam'
 import { grade, missingAnswers } from '../omr/grading'
 import type { ScanResult, ScanSuccess } from '../omr/scanner'
 import { SCAN_FAILURE_TEXT } from '../scan/messages'
@@ -150,9 +150,10 @@ function Scanner({ exam, user }: { exam: Exam; user: User }) {
         return
       }
       L.misses = 0
-      if (res.config.examCode !== exam.code) {
+      const misfit = sheetFitsExam(res.config, exam)
+      if (misfit) {
         L.recent = []
-        setStatus(`กระดาษนี้เป็นของข้อสอบรหัส ${res.config.examCode} ไม่ใช่ข้อสอบนี้ (${exam.code})`)
+        setStatus(misfit)
         return
       }
       if (L.locked) {
@@ -177,7 +178,7 @@ function Scanner({ exam, user }: { exam: Exam; user: User }) {
       L.recent = []
       setStatus('บันทึกแล้ว ✓ วางแผ่นถัดไปได้เลย')
     },
-    [exam.code, accept],
+    [exam, accept],
   )
 
   const stopStream = () => {
@@ -297,7 +298,7 @@ function Scanner({ exam, user }: { exam: Exam; user: User }) {
         const frame = grabFrame(bmp, bmp.width, bmp.height, canvas, 1600)
         const { result } = await clientRef.current.read(frame)
         if (!result.ok) problems.push(`${file.name}: ${SCAN_FAILURE_TEXT[result.reason]}`)
-        else if (result.config.examCode !== exam.code) problems.push(`${file.name}: เป็นกระดาษของข้อสอบรหัส ${result.config.examCode}`)
+        else if (sheetFitsExam(result.config, exam)) problems.push(`${file.name}: ${sheetFitsExam(result.config, exam)}`)
         else {
           accept(result)
           ok++

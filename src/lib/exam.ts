@@ -1,4 +1,4 @@
-import type { SheetConfig } from '../omr/config'
+import { GENERIC_CODE, type SheetConfig } from '../omr/config'
 import type { Database, Exam } from '../data/types'
 import type { SheetTexts } from '../sheet/AnswerSheet'
 import { roomLabel, termLabel } from './terms'
@@ -41,4 +41,19 @@ export function examSheetTexts(db: Database, exam: Exam): SheetTexts {
       .filter(Boolean)
       .join(' · '),
   }
+}
+
+/**
+ * Can a scanned sheet be graded for this exam? Sheets printed for the exam carry its
+ * code; general-purpose sheets fit any exam with the same layout.
+ */
+export function sheetFitsExam(cfg: SheetConfig, exam: Exam): string | null {
+  if (cfg.examCode === exam.code) return null
+  if (cfg.examCode !== GENERIC_CODE) return `กระดาษนี้พิมพ์สำหรับข้อสอบอื่น (รหัส ${cfg.examCode}) ไม่ใช่ข้อสอบนี้ (${exam.code})`
+  const want = examConfig(exam)
+  if (cfg.questions !== want.questions || cfg.choices !== want.choices || cfg.idDigits !== want.idDigits) {
+    const id = (n: number) => (n ? `ฝนรหัส ${n} หลัก` : 'เขียนชื่อ')
+    return `กระดาษเป็นแบบ ${cfg.questions} ข้อ ${cfg.choices} ตัวเลือก ${id(cfg.idDigits)} แต่ข้อสอบนี้เป็นแบบ ${want.questions} ข้อ ${want.choices} ตัวเลือก ${id(want.idDigits)}`
+  }
+  return null
 }

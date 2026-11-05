@@ -121,7 +121,11 @@ function seed(): Database {
 
 function loadLocal(): Database {
   const saved = readStorage<Database | null>(DB_KEY, null)
-  return saved && saved.version === 3 ? { ...emptyDB(), ...saved } : seed()
+  if (saved && saved.version === 3) return { ...emptyDB(), ...saved }
+  // save the sample data right away, so its ids (and the signed-in user) survive a reload
+  const fresh = seed()
+  writeStorage(DB_KEY, fresh)
+  return fresh
 }
 
 /* ------------------------------------------------------------------ */

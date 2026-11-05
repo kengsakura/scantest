@@ -12,6 +12,14 @@ export function PrintPage({ examId }: { examId: string }) {
   const students = studentsOf(db, exam.classroomId)
   const config = examConfig(exam)
   const texts = examSheetTexts(db, exam)
+  // general sheets of the preset fit this exam only if the layout still matches
+  const preset = db.presets.find(
+    (p) =>
+      p.id === exam.presetId &&
+      p.questions === exam.sheet.questions &&
+      p.choices === exam.sheet.choices &&
+      (p.useStudentId ? db.settings.idDigits : 0) === exam.idDigits,
+  )
   const idOk = (code: string) => /^\d+$/.test(code) && code.length === exam.idDigits
 
   const print = async () => {
@@ -46,6 +54,11 @@ export function PrintPage({ examId }: { examId: string }) {
           ตั้งค่าเครื่องพิมพ์: กระดาษ A4 · สเกล 100% (Actual size / ขนาดจริง) · ปิด Headers and footers
           {mode === 'blank' && ' · ใส่จำนวนสำเนาตามจำนวนนักเรียน'}
         </p>
+        {preset && (
+          <p className="hint">
+            มีกระดาษของแบบ "{preset.name}" พิมพ์ไว้แล้ว? ใช้กับข้อสอบนี้ได้เลย ไม่ต้องพิมพ์ใหม่ (<a href={`#/sheets/${preset.id}`}>พิมพ์กระดาษของแบบนี้</a>)
+          </p>
+        )}
       </div>
 
       <div className="print-sheets">
