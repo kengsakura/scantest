@@ -25,6 +25,8 @@ export interface SyntheticOptions {
   faint?: { q: number; c: number; d: number }[]
   noise?: number
   seed?: number
+  /** Draw a solid black square in the logo slot (worst case for marker detection) */
+  logo?: boolean
 }
 
 function rng(seed: number) {
@@ -83,6 +85,8 @@ export function renderSynthetic(cfg: SheetConfig, o: SyntheticOptions): GrayImag
   const ink = (x: number, y: number): number => {
     if (x < 0 || y < 0 || x > PAGE_W || y > PAGE_H) return -1 // background
     for (const m of L.markers) if (x >= m.x && x <= m.x + m.w && y >= m.y && y <= m.y + m.h) return 1
+    const lg = L.logo
+    if (o.logo && x >= lg.x && x <= lg.x + lg.w && y >= lg.y && y <= lg.y + lg.h) return 1
     const q = L.qr
     if (x >= q.x && x < q.x + q.w && y >= q.y && y < q.y + q.h) {
       const c = Math.floor(((x - q.x) / q.w) * qn)

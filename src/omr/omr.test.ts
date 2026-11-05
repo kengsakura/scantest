@@ -182,6 +182,18 @@ describe('scanner (synthetic photos)', { timeout: 30_000 }, () => {
     if (res.ok) expect(res.answers[0]).toEqual(answers[0])
   })
 
+  it('is not fooled by a solid black logo next to the top-left marker', () => {
+    const c = cases[0]
+    const answers = answersFor(c.cfg, 11)
+    const img = renderSynthetic(c.cfg, { width: c.w, height: c.h, pageCorners: c.corners, answers, studentId: '43210', logo: true })
+    const res = readSheet(img)
+    expect(res.ok, res.ok ? '' : res.reason).toBe(true)
+    if (res.ok) {
+      expect(sortRows(res.answers)).toEqual(sortRows(answers))
+      expect(res.studentId).toBe('43210')
+    }
+  })
+
   it('fails cleanly on an image with no sheet', () => {
     const img = { width: 400, height: 300, data: new Uint8Array(400 * 300).fill(200) }
     const res = readSheet(img)

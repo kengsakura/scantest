@@ -287,7 +287,19 @@ function quadScore(img: GrayImage, quad: Blob[]): number {
   if (!H) return Infinity
   let score = 0
   const s = MARKER_SIZE / 2
-  for (const m of MARKERS_MM) {
+  for (const [i, m] of MARKERS_MM.entries()) {
+    // the blob must be about as big as a marker would appear at that spot, so a
+    // logo or other dark shape near a corner can't stand in for the marker
+    const corners = [
+      applyHomography(H, m.x - s, m.y - s),
+      applyHomography(H, m.x + s, m.y - s),
+      applyHomography(H, m.x + s, m.y + s),
+      applyHomography(H, m.x - s, m.y + s),
+    ]
+    let expected = 0
+    for (let k = 0; k < 4; k++) expected += corners[k].x * corners[(k + 1) % 4].y - corners[(k + 1) % 4].x * corners[k].y
+    const ratio = quad[i].area / Math.max(1, Math.abs(expected) / 2)
+    if (ratio < 0.45 || ratio > 1.8) return Infinity
     // marker interior should be dark, a ring 1.5mm outside should be light
     let inside = 0
     let outside = 0

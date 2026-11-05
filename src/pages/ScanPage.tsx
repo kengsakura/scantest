@@ -91,7 +91,7 @@ function Scanner({ exam, user }: { exam: Exam; user: User }) {
         scannedBy: user.id,
         nameImage: grayToDataUrl(r.nameCrop),
       })
-      const known = r.studentId !== null && getDB().students.some((s) => s.classroomId === exam.classroomId && s.code === r.studentId)
+      const known = r.studentId !== null && studentsOf(getDB(), exam.classroomId).some((s) => s.code === r.studentId)
       beep(known || exam.idDigits === 0) // name-only exams are matched later, not an error
       setLastId(rec.id)
       return rec

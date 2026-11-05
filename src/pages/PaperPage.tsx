@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { removeScan, scansOf, studentsOf, updateScanAnswers, useDB, useExamScans } from '../data/store'
-import type { ScanRecord, Student } from '../data/types'
-import { examConfig, formatScore } from '../lib/exam'
+import type { ClassStudent, ScanRecord } from '../data/types'
+import { examConfig, examSheetTexts, formatScore } from '../lib/exam'
 import { go } from '../lib/router'
 import { choiceLabels } from '../omr/config'
 import { grade, type QuestionStatus } from '../omr/grading'
@@ -17,7 +17,7 @@ const STATUS: Record<QuestionStatus, { text: string; cls: string }> = {
 }
 
 /** Papers in the order the results table shows them: class list first, then unidentified sheets. */
-export function orderedPapers(scans: ScanRecord[], students: Student[]): ScanRecord[] {
+export function orderedPapers(scans: ScanRecord[], students: ClassStudent[]): ScanRecord[] {
   const num = new Map(students.map((s) => [s.code, s.number]))
   return [...scans].sort((a, b) => {
     const na = num.get(a.studentCode ?? '') ?? Infinity
@@ -45,7 +45,6 @@ export function PaperPage({ examId, scanId }: { examId: string; scanId: string }
   const g = grade(answers, exam.key)
   const pct = g.maxScore ? Math.round((g.score / g.maxScore) * 100) : 0
   const labels = choiceLabels(exam.sheet)
-  const room = db.classrooms.find((c) => c.id === exam.classroomId)
   const editing = draft !== null
 
   const goTo = (i: number) => {
@@ -148,8 +147,7 @@ export function PaperPage({ examId, scanId }: { examId: string; scanId: string }
           <AnswerSheet
             config={examConfig(exam)}
             texts={{
-              title: exam.title,
-              classroom: room?.name,
+              ...examSheetTexts(db, exam),
               studentName: student?.name,
               studentNumber: student ? String(student.number) : undefined,
               prefillId: exam.idDigits ? (scan.studentCode ?? undefined) : undefined,

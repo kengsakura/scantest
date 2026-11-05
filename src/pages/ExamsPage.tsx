@@ -1,19 +1,25 @@
-import { scanCount, studentsOf, useDB, visibleExams } from '../data/store'
+import { scanCount, studentsOf, useDB, useViewTerm, visibleExams } from '../data/store'
 import type { User } from '../data/types'
-import { formatDate } from '../lib/exam'
+import { examRoomLabel, formatDate } from '../lib/exam'
+import { termLabel } from '../lib/terms'
 import { go } from '../lib/router'
 import { missingAnswers } from '../omr/grading'
 
 export function ExamsPage({ user }: { user: User }) {
   const db = useDB()
-  const exams = visibleExams(db, user)
+  const term = useViewTerm()
+  const exams = visibleExams(db, user, term?.id)
+  const isCurrent = term?.id === db.settings.currentTermId
 
   return (
     <section>
       <div className="page-head">
         <div>
           <h1>ข้อสอบ</h1>
-          <p className="muted">{user.role === 'admin' ? 'ข้อสอบทั้งหมดในโรงเรียน' : 'ข้อสอบที่คุณสร้าง'}</p>
+          <p className="muted">
+            {user.role === 'admin' ? 'ข้อสอบทั้งหมดในโรงเรียน' : 'ข้อสอบที่คุณสร้าง'} · ภาคเรียน {term ? termLabel(term) : '–'}
+            {!isCurrent && term && <span className="badge warn">ดูข้อมูลภาคเรียนเก่า</span>}
+          </p>
         </div>
         <button className="btn" onClick={() => go('/exams/new')}>
           + สร้างข้อสอบ
@@ -22,7 +28,7 @@ export function ExamsPage({ user }: { user: User }) {
 
       {exams.length === 0 ? (
         <div className="card empty">
-          <p>ยังไม่มีข้อสอบ</p>
+          <p>ยังไม่มีข้อสอบในภาคเรียนนี้</p>
           <button className="btn" onClick={() => go('/exams/new')}>
             สร้างข้อสอบแรก
           </button>
@@ -30,7 +36,6 @@ export function ExamsPage({ user }: { user: User }) {
       ) : (
         <ul className="exam-list">
           {exams.map((e) => {
-            const room = db.classrooms.find((c) => c.id === e.classroomId)
             const total = studentsOf(db, e.classroomId).length
             const scanned = scanCount(db, e.id)
             const missing = missingAnswers(e.key).length
@@ -40,7 +45,7 @@ export function ExamsPage({ user }: { user: User }) {
                 <button className="exam-main" onClick={() => go(`/exams/${e.id}`)}>
                   <strong>{e.title}</strong>
                   <span className="muted">
-                    {room?.name ?? 'ไม่ระบุห้อง'} · {e.sheet.questions} ข้อ {e.sheet.choices} ตัวเลือก · รหัส {e.code}
+                    {examRoomLabel(db, e)} · {e.sheet.questions} ข้อ {e.sheet.choices} ตัวเลือก · รหัส {e.code}
                   </span>
                   <span className="muted small">
                     {formatDate(e.createdAt)}

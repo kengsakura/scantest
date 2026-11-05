@@ -12,6 +12,21 @@ export interface SheetTexts {
   studentNumber?: string
   /** Student ID to print already bubbled in */
   prefillId?: string
+  /** School line above the title */
+  header?: string
+  /** School logo (image data URL) */
+  logo?: string | null
+}
+
+/** Rough printed width (mm) of a line: Thai vowel/tone marks take no width. */
+function textWidth(text: string, fontSize: number): number {
+  const base = text.replace(/[\u0E31\u0E34-\u0E3A\u0E47-\u0E4E]/g, '')
+  return base.length * fontSize * 0.5
+}
+
+/** Squeeze a line into maxWidth mm if it would be wider. */
+function fit(text: string, fontSize: number, maxWidth: number) {
+  return textWidth(text, fontSize) > maxWidth ? { textLength: maxWidth, lengthAdjust: 'spacingAndGlyphs' as const } : {}
 }
 
 const FONT = "'Sarabun', 'Noto Sans Thai', sans-serif"
@@ -71,9 +86,23 @@ export function AnswerSheet({
         <rect key={i} x={m.x} y={m.y} width={m.w} height={m.h} fill="#000" />
       ))}
 
-      <text x={L.title.x} y={L.title.y + 1.9} textAnchor="middle" fontSize={5.2} fontWeight={700} fill={INK}>
-        {texts.title}
-      </text>
+      {texts.logo && (
+        <image href={texts.logo} x={L.logo.x} y={L.logo.y} width={L.logo.w} height={L.logo.h} preserveAspectRatio="xMidYMid meet" />
+      )}
+      {texts.header ? (
+        <>
+          <text x={L.header.x} y={L.header.y} textAnchor="middle" fontSize={3.4} fontWeight={600} fill="#333" {...fit(texts.header, 3.4, 140)}>
+            {texts.header}
+          </text>
+          <text x={L.title.x} y={L.header.titleY} textAnchor="middle" fontSize={4.8} fontWeight={700} fill={INK} {...fit(texts.title, 4.8, 140)}>
+            {texts.title}
+          </text>
+        </>
+      ) : (
+        <text x={L.title.x} y={L.title.y + 1.9} textAnchor="middle" fontSize={5.2} fontWeight={700} fill={INK} {...fit(texts.title, 5.2, 140)}>
+          {texts.title}
+        </text>
+      )}
 
       {/* text fields */}
       {L.fields.map((f) => (

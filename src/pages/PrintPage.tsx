@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { studentsOf, useDB } from '../data/store'
-import { examConfig } from '../lib/exam'
+import { examConfig, examSheetTexts } from '../lib/exam'
 import { AnswerSheet } from '../sheet/AnswerSheet'
 
 export function PrintPage({ examId }: { examId: string }) {
@@ -9,10 +9,9 @@ export function PrintPage({ examId }: { examId: string }) {
   const [mode, setMode] = useState<'blank' | 'named'>('blank')
   if (!exam) return <p>ไม่พบข้อสอบ</p>
 
-  const room = db.classrooms.find((c) => c.id === exam.classroomId)
   const students = studentsOf(db, exam.classroomId)
   const config = examConfig(exam)
-  const footer = `${db.settings.schoolName} · รหัสแบบ ${exam.code} · ${exam.sheet.questions} ข้อ`
+  const texts = examSheetTexts(db, exam)
   const idOk = (code: string) => /^\d+$/.test(code) && code.length === exam.idDigits
 
   const print = async () => {
@@ -52,7 +51,7 @@ export function PrintPage({ examId }: { examId: string }) {
       <div className="print-sheets">
         {mode === 'blank' ? (
           <div className="paper">
-            <AnswerSheet config={config} texts={{ title: exam.title, classroom: room?.name, footer }} />
+            <AnswerSheet config={config} texts={texts} />
           </div>
         ) : (
           students.map((s) => (
@@ -60,9 +59,7 @@ export function PrintPage({ examId }: { examId: string }) {
               <AnswerSheet
                 config={config}
                 texts={{
-                  title: exam.title,
-                  classroom: room?.name,
-                  footer,
+                  ...texts,
                   studentName: s.name,
                   studentNumber: String(s.number),
                   prefillId: idOk(s.code) ? s.code : undefined,

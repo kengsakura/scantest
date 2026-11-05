@@ -98,6 +98,10 @@ export interface SheetLayout {
   /** Order: top-left, top-right, bottom-right, bottom-left */
   markers: [Marker, Marker, Marker, Marker]
   title: { x: number; y: number }
+  /** Optional school line above the title, and where the title goes when it's shown */
+  header: { x: number; y: number; titleY: number }
+  /** Optional school logo, kept clear of the top-left marker */
+  logo: Rect
   qr: Rect
   fields: Field[]
   studentId: null | {
@@ -280,6 +284,8 @@ export function computeLayout(cfg: SheetConfig): LayoutResult {
       page: { w: PAGE_W, h: PAGE_H },
       markers: markers(),
       title: { x: PAGE_W / 2, y: MARKER_INSET + MARKER_SIZE / 2 },
+      header: { x: PAGE_W / 2, y: 10.4, titleY: 16.2 },
+      logo: { x: 22, y: 6.5, w: 11, h: 11 },
       qr,
       fields,
       studentId,

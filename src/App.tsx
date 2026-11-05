@@ -1,12 +1,13 @@
 import { lazy, Suspense, type ReactNode } from 'react'
-import { CLOUD, dismissError, logout, useAppState, useCurrentUser, useDB } from './data/store'
+import { CLOUD, dismissError, logout, setViewTerm, useAppState, useCurrentUser, useDB, useViewTerm } from './data/store'
+import { compareTerms, termLabel } from './lib/terms'
 import { go, useRoute } from './lib/router'
 import { ExamsPage } from './pages/ExamsPage'
 import { LoginPage } from './pages/LoginPage'
 
 // Pages load on demand so the first screen (login / exam list) downloads less on phones.
-const AdminClassesPage = lazy(() => import('./pages/AdminClassesPage').then((m) => ({ default: m.AdminClassesPage })))
-const AdminUsersPage = lazy(() => import('./pages/AdminUsersPage').then((m) => ({ default: m.AdminUsersPage })))
+const AdminPage = lazy(() => import('./pages/admin/AdminPage').then((m) => ({ default: m.AdminPage })))
+const ExportPage = lazy(() => import('./pages/ExportPage').then((m) => ({ default: m.ExportPage })))
 const AnalysisPage = lazy(() => import('./pages/AnalysisPage').then((m) => ({ default: m.AnalysisPage })))
 const KeyPage = lazy(() => import('./pages/KeyPage').then((m) => ({ default: m.KeyPage })))
 const NewExamPage = lazy(() => import('./pages/NewExamPage').then((m) => ({ default: m.NewExamPage })))
@@ -20,6 +21,7 @@ export default function App() {
   const route = useRoute()
   const db = useDB()
   const { phase, error } = useAppState()
+  const viewTerm = useViewTerm()
   if (phase === 'starting' || phase === 'loading') return <div className="splash">กำลังโหลด…</div>
   if (phase === 'signed-out' || !user) {
     if (CLOUD && phase === 'ready') return <PendingPage reason="no-profile" error={error} />
@@ -35,9 +37,9 @@ export default function App() {
   else if (section === 'exams' && id && sub === 'scan') content = <ScanPage examId={id} user={user} />
   else if (section === 'exams' && id && sub === 'paper' && extra) content = <PaperPage examId={id} scanId={extra} />
   else if (section === 'exams' && id && sub === 'analysis') content = <AnalysisPage examId={id} />
+  else if (section === 'exams' && id && sub === 'export') content = <ExportPage examId={id} />
   else if (section === 'exams' && id) content = <ResultsPage examId={id} />
-  else if (section === 'classes' && user.role === 'admin') content = <AdminClassesPage selectedId={id} />
-  else if (section === 'users' && user.role === 'admin') content = <AdminUsersPage />
+  else if (section === 'admin' && user.role === 'admin') content = <AdminPage tab={id} sub={sub} />
   else content = <ExamsPage user={user} />
 
   const nav = (path: string, label: string) => (
@@ -60,9 +62,19 @@ export default function App() {
         </button>
         <nav>
           {nav('exams', 'ข้อสอบ')}
-          {user.role === 'admin' && nav('classes', 'ห้องเรียน')}
-          {user.role === 'admin' && nav('users', 'ผู้ใช้ & ตั้งค่า')}
+          {user.role === 'admin' && nav('admin', 'จัดการระบบ')}
         </nav>
+        <label className="term-pick" title="ภาคเรียนที่กำลังดู">
+          <span>ภาคเรียน</span>
+          <select value={viewTerm?.id ?? ''} onChange={(e) => setViewTerm(e.target.value)}>
+            {[...db.terms].sort(compareTerms).reverse().map((t) => (
+              <option key={t.id} value={t.id}>
+                {termLabel(t)}
+                {t.id === db.settings.currentTermId ? ' (ปัจจุบัน)' : ''}
+              </option>
+            ))}
+          </select>
+        </label>
         <div className="who">
           <span>
             {user.name}
@@ -74,6 +86,16 @@ export default function App() {
         </div>
       </header>
       {!CLOUD && <div className="demo-banner no-print">โหมดทดลอง: ข้อมูลเก็บในเบราว์เซอร์เครื่องนี้เท่านั้น (ยังไม่เชื่อมฐานข้อมูลกลาง)</div>}
+      {viewTerm && viewTerm.id !== db.settings.currentTermId && (
+        <div className="old-term-bar no-print">
+          กำลังดูข้อมูลภาคเรียน {termLabel(viewTerm)} (ไม่ใช่ภาคเรียนปัจจุบัน)
+          {db.settings.currentTermId && (
+            <button className="btn ghost small" onClick={() => setViewTerm(db.settings.currentTermId!)}>
+              กลับภาคเรียนปัจจุบัน
+            </button>
+          )}
+        </div>
+      )}
       {error && (
         <div className="error-bar no-print" role="alert">
           <span>{error}</span>
@@ -93,10 +115,10 @@ function PendingPage({ reason, error }: { reason: 'pending' | 'no-profile'; erro
   return (
     <div className="login">
       <div className="card login-card">
-        <h1>{reason === 'pending' ? 'รอผู้ดูแลระบบอนุมัติ' : 'ไม่พบบัญชีผู้ใช้'}</h1>
+        <h1>{reason === 'pending' ? 'บัญชียังใช้งานไม่ได้' : 'ไม่พบบัญชีผู้ใช้'}</h1>
         <p className="muted">
           {reason === 'pending'
-            ? 'สมัครเรียบร้อยแล้ว ให้ผู้ดูแลระบบของโรงเรียนอนุมัติบัญชีของคุณ (หน้า ผู้ใช้ & ตั้งค่า) แล้วกดรีเฟรชหน้านี้'
+            ? 'บัญชีนี้ยังไม่ได้รับอนุมัติ หรือถูกปิดใช้งาน ติดต่อผู้ดูแลระบบของโรงเรียน (เมนู จัดการระบบ → ครู & ผู้ใช้) แล้วกดรีเฟรช'
             : 'บัญชีนี้ยังไม่มีข้อมูลผู้ใช้ในระบบ หรือถูกลบไปแล้ว ติดต่อผู้ดูแลระบบ'}
         </p>
         {error && <p className="hint warn">{error}</p>}

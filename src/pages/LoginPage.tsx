@@ -45,14 +45,9 @@ function CloudLogin() {
 
   return (
     <>
-      <div className="tabs" role="tablist">
-        <button role="tab" aria-selected={mode === 'signin'} className={mode === 'signin' ? 'on' : ''} onClick={() => setMode('signin')}>
-          เข้าสู่ระบบ
-        </button>
-        <button role="tab" aria-selected={mode === 'signup'} className={mode === 'signup' ? 'on' : ''} onClick={() => setMode('signup')}>
-          สมัครบัญชีครู
-        </button>
-      </div>
+      {mode === 'signup' && (
+        <p className="notice">ตั้งค่าครั้งแรก: บัญชีแรกที่สมัครจะเป็นผู้ดูแลระบบ จากนั้นผู้ดูแลระบบสร้างบัญชีให้ครูเองที่เมนู จัดการระบบ</p>
+      )}
       <form onSubmit={submit}>
         {mode === 'signup' && (
           <label>
@@ -61,8 +56,17 @@ function CloudLogin() {
           </label>
         )}
         <label>
-          อีเมล
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" />
+          {mode === 'signin' ? 'ชื่อผู้ใช้' : 'อีเมล'}
+          <input
+            type={mode === 'signin' ? 'text' : 'email'}
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            autoComplete={mode === 'signin' ? 'username' : 'email'}
+            autoCapitalize="off"
+            autoCorrect="off"
+            spellCheck={false}
+          />
         </label>
         <label>
           รหัสผ่าน
@@ -81,7 +85,9 @@ function CloudLogin() {
           {busy ? 'กำลังดำเนินการ…' : mode === 'signin' ? 'เข้าสู่ระบบ' : 'สมัคร'}
         </button>
       </form>
-      {mode === 'signup' && <p className="hint">บัญชีใหม่ต้องให้ผู้ดูแลระบบอนุมัติก่อนใช้งาน (ยกเว้นอีเมลที่ผู้ดูแลระบบเพิ่มไว้ล่วงหน้า)</p>}
+      <button type="button" className="btn ghost small" onClick={() => setMode(mode === 'signin' ? 'signup' : 'signin')}>
+        {mode === 'signin' ? 'ตั้งค่าระบบครั้งแรก (สร้างบัญชีผู้ดูแลระบบ)' : '← กลับไปเข้าสู่ระบบ'}
+      </button>
     </>
   )
 }

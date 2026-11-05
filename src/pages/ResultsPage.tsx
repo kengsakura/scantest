@@ -1,28 +1,13 @@
 import { removeExam, removeScan, scansOf, studentsOf, useDB, useExamScans } from '../data/store'
-import type { ScanRecord, Student } from '../data/types'
-import { formatDate, formatScore } from '../lib/exam'
+import type { ClassStudent, ScanRecord } from '../data/types'
+import { examRoomLabel, formatDate, formatScore } from '../lib/exam'
 import { go } from '../lib/router'
-import { choiceLabels } from '../omr/config'
 import { grade, maxScore, missingAnswers } from '../omr/grading'
 import { NameImage, StudentPicker } from './StudentPicker'
 
 interface Row {
-  student: Student | null
+  student: ClassStudent | null
   scan: ScanRecord | null
-}
-
-function downloadCsv(filename: string, rows: (string | number)[][]) {
-  const esc = (v: string | number) => {
-    const s = String(v)
-    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
-  }
-  const csv = '﻿' + rows.map((r) => r.map(esc).join(',')).join('\r\n') // BOM so Excel reads Thai correctly
-  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  a.click()
-  URL.revokeObjectURL(url)
 }
 
 export function ResultsPage({ examId }: { examId: string }) {
@@ -31,7 +16,6 @@ export function ResultsPage({ examId }: { examId: string }) {
   useExamScans(examId)
   if (!exam) return <p>ไม่พบข้อสอบ</p>
 
-  const room = db.classrooms.find((c) => c.id === exam.classroomId)
   const students = studentsOf(db, exam.classroomId)
   const scans = scansOf(db, exam.id)
   const byCode = new Map(scans.filter((s) => s.studentCode).map((s) => [s.studentCode!, s]))
@@ -44,24 +28,6 @@ export function ResultsPage({ examId }: { examId: string }) {
   const full = maxScore(exam.key)
   const mean = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : 0
   const missingKey = missingAnswers(exam.key).length
-
-  const exportCsv = (withAnswers: boolean) => {
-    const labels = choiceLabels(exam.sheet)
-    const qs = Array.from({ length: exam.sheet.questions }, (_, i) => `ข้อ ${i + 1}`)
-    const header = ['เลขที่', 'รหัสนักเรียน', 'ชื่อ-สกุล', 'คะแนน', 'คะแนนเต็ม', ...(withAnswers ? qs : [])]
-    const body = rows.map(({ student, scan }) => {
-      const g = scan ? grade(scan.answers, exam.key) : null
-      return [
-        student?.number ?? '',
-        student?.code ?? scan?.studentCode ?? '',
-        student?.name ?? '',
-        g ? g.score : 'ขาดสอบ',
-        full,
-        ...(withAnswers ? (scan ? scan.answers.map((m) => m.map((c) => labels[c]).join('+')) : qs.map(() => '')) : []),
-      ]
-    })
-    downloadCsv(`${exam.title} ${room?.name ?? ''}.csv`.replace(/[\\/:*?"<>|]/g, '_'), [header, ...body])
-  }
 
   const deleteExam = () => {
     if (confirm(`ลบข้อสอบ "${exam.title}" และผลสแกนทั้งหมด? การลบย้อนกลับไม่ได้`)) {
@@ -79,10 +45,13 @@ export function ResultsPage({ examId }: { examId: string }) {
           </a>
           <h1>{exam.title}</h1>
           <p className="muted">
-            {room?.name} · {exam.sheet.questions} ข้อ · คะแนนเต็ม {formatScore(full)} · รหัสแบบ {exam.code}
+            {examRoomLabel(db, exam)} · {exam.sheet.questions} ข้อ · คะแนนเต็ม {formatScore(full)} · รหัสแบบ {exam.code}
           </p>
         </div>
         <div className="head-actions">
+          <a className={`btn secondary ${scans.length ? '' : 'disabled'}`} href={scans.length ? `#/exams/${exam.id}/export` : undefined}>
+            ส่งออกคะแนน
+          </a>
           <a className={`btn secondary ${scans.length ? '' : 'disabled'}`} href={scans.length ? `#/exams/${exam.id}/analysis` : undefined}>
             วิเคราะห์ข้อสอบ
           </a>
@@ -149,12 +118,9 @@ export function ResultsPage({ examId }: { examId: string }) {
         <div className="table-tools">
           <strong>ผลรายคน</strong>
           <span className="grow" />
-          <button className="btn secondary small" onClick={() => exportCsv(false)} disabled={!scans.length}>
-            ส่งออก CSV (คะแนน)
-          </button>
-          <button className="btn secondary small" onClick={() => exportCsv(true)} disabled={!scans.length}>
-            ส่งออก CSV (คะแนน + คำตอบรายข้อ)
-          </button>
+          <a className={`btn secondary small ${scans.length ? '' : 'disabled'}`} href={scans.length ? `#/exams/${exam.id}/export` : undefined}>
+            ส่งออก Excel / คัดลอกคะแนน
+          </a>
         </div>
         <table className="table">
           <thead>

@@ -2,21 +2,40 @@
  * App data store. Pages read a synchronous snapshot (`useDB`) and call the
  * mutation functions below. Two backends:
  *
- * - cloud (Supabase configured): the snapshot is loaded from the server after
- *   sign-in, every change is applied to the snapshot immediately and then sent
- *   to the server. Scans go through a local outbox so scanning keeps working
- *   when the connection drops; they upload as soon as it is back.
+ * - cloud (Supabase configured): the snapshot holds one term's classes, students
+ *   and exams (the term being viewed), loaded after sign-in. Simple changes are
+ *   applied to the snapshot immediately and then sent to the server; bulk changes
+ *   (imports, new terms) run on the server and then reload. Scans go through a
+ *   local outbox so scanning keeps working when the connection drops.
  * - local (no Supabase): everything lives in this browser's localStorage, with
  *   a pick-a-user demo login.
  */
 import { useEffect, useSyncExternalStore } from 'react'
 import { randomExamCode } from '../omr/config'
 import { emptyKey, type AnswerKey } from '../omr/grading'
-import { api, CLOUD, fetchAll, fetchNameImages, fetchScans, fromScan, isNetworkError, supabase, thaiError } from './cloud'
-import type { AllowedEmail, Classroom, Database, Exam, Role, ScanRecord, Settings, SheetType, Student, User } from './types'
+import type { StudentRow } from '../lib/importers'
+import { compareRooms, compareTerms, currentThaiTerm, fullName, type PromotionRow } from '../lib/terms'
+import { api, CLOUD, fetchAll, fetchNameImages, fetchScans, fromScan, isNetworkError, loginEmail, supabase, thaiError } from './cloud'
+import type {
+  ClassStudent,
+  Classroom,
+  Database,
+  Enrollment,
+  Exam,
+  Role,
+  ScanRecord,
+  Settings,
+  SheetPreset,
+  SheetType,
+  Student,
+  StudentStatus,
+  Term,
+  User,
+} from './types'
 
-const DB_KEY = 'scantest.db.v1'
+const DB_KEY = 'scantest.db.v3'
 const SESSION_KEY = 'scantest.session'
+const VIEW_TERM_KEY = 'scantest.viewTerm'
 const OUTBOX_KEY = 'scantest.outbox.v1'
 
 export { CLOUD }
@@ -43,37 +62,66 @@ function writeStorage(key: string, value: unknown) {
   }
 }
 
+export const DEFAULT_PRESETS: Omit<SheetPreset, 'id'>[] = [
+  { name: '20 ข้อ 4 ตัวเลือก', questions: 20, choices: 4, labelStyle: 'thai', useStudentId: true, defaultPoints: 1, sort: 1 },
+  { name: '30 ข้อ 4 ตัวเลือก', questions: 30, choices: 4, labelStyle: 'thai', useStudentId: true, defaultPoints: 1, sort: 2 },
+  { name: '40 ข้อ 4 ตัวเลือก', questions: 40, choices: 4, labelStyle: 'thai', useStudentId: true, defaultPoints: 1, sort: 3 },
+  { name: '50 ข้อ 5 ตัวเลือก', questions: 50, choices: 5, labelStyle: 'thai', useStudentId: true, defaultPoints: 1, sort: 4 },
+  { name: 'ถูก/ผิด 20 ข้อ', questions: 20, choices: 2, labelStyle: 'truefalse', useStudentId: true, defaultPoints: 1, sort: 5 },
+]
+
 function emptyDB(): Database {
   return {
-    version: 1,
+    version: 3,
     users: [],
-    allowedEmails: [],
-    scanCounts: {},
+    terms: [],
     classrooms: [],
     students: [],
+    enrollments: [],
+    presets: [],
     exams: [],
     scans: [],
-    settings: { schoolName: 'โรงเรียนของฉัน', idDigits: 5 },
+    scanCounts: {},
+    settings: { schoolName: 'โรงเรียนของฉัน', idDigits: 4, currentTermId: null, logo: null, sheetHeader: '' },
   }
 }
 
 function seed(): Database {
-  const classroomId = uid()
-  const names = ['ด.ช. กิตติ ใจดี', 'ด.ญ. ขวัญใจ รักเรียน', 'ด.ช. คณิน มั่นคง', 'ด.ญ. จันทร์เพ็ญ แสงทอง', 'ด.ช. ชนาธิป ศรีสุข']
+  const term: Term = { id: uid(), ...currentThaiTerm() }
+  const classroom: Classroom = { id: uid(), termId: term.id, grade: 'ม.1', room: '1' }
+  const people: [string, string, string][] = [
+    ['ด.ช.', 'กิตติ', 'ใจดี'],
+    ['ด.ญ.', 'ขวัญใจ', 'รักเรียน'],
+    ['ด.ช.', 'คณิน', 'มั่นคง'],
+    ['ด.ญ.', 'จันทร์เพ็ญ', 'แสงทอง'],
+    ['ด.ช.', 'ชนาธิป', 'ศรีสุข'],
+  ]
+  const students: Student[] = people.map(([prefix, firstName, lastName], i) => ({
+    id: uid(),
+    code: String(1001 + i),
+    prefix,
+    firstName,
+    lastName,
+    status: 'active',
+  }))
   return {
     ...emptyDB(),
     users: [
-      { id: uid(), name: 'ผู้ดูแลระบบ', email: 'admin@school.ac.th', role: 'admin' },
-      { id: uid(), name: 'ครูตัวอย่าง', email: 'teacher@school.ac.th', role: 'teacher' },
+      { id: uid(), name: 'ผู้ดูแลระบบ', email: 'admin@scantest.local', username: 'admin', role: 'admin' },
+      { id: uid(), name: 'ครูตัวอย่าง', email: 'teacher@scantest.local', username: 'teacher', role: 'teacher' },
     ],
-    classrooms: [{ id: classroomId, name: 'ม.1/1 (ตัวอย่าง)' }],
-    students: names.map((name, i) => ({ id: uid(), classroomId, number: i + 1, code: String(10001 + i), name })),
+    terms: [term],
+    classrooms: [classroom],
+    students,
+    enrollments: students.map((s, i) => ({ id: uid(), termId: term.id, classroomId: classroom.id, studentId: s.id, number: i + 1 })),
+    presets: DEFAULT_PRESETS.map((p) => ({ ...p, id: uid() })),
+    settings: { ...emptyDB().settings, currentTermId: term.id, sheetHeader: 'โรงเรียนของฉัน' },
   }
 }
 
 function loadLocal(): Database {
-  const db = readStorage<Database | null>(DB_KEY, null)
-  return db && db.version === 1 ? { ...emptyDB(), ...db } : seed()
+  const saved = readStorage<Database | null>(DB_KEY, null)
+  return saved && saved.version === 3 ? { ...emptyDB(), ...saved } : seed()
 }
 
 /* ------------------------------------------------------------------ */
@@ -88,13 +136,19 @@ export interface AppState {
   error: string | null
   /** Scans saved on this device that have not reached the server yet */
   outbox: number
+  /** The term whose classes and exams are shown (not necessarily the school's current term) */
+  viewTermId: string | null
 }
 
 let db: Database = CLOUD ? emptyDB() : loadLocal()
 let userId: string | null = CLOUD ? null : readStorage<string | null>(SESSION_KEY, null)
-let app: AppState = { phase: CLOUD ? 'starting' : userId ? 'ready' : 'signed-out', error: null, outbox: 0 }
 let outbox: ScanRecord[] = CLOUD ? readStorage<ScanRecord[]>(OUTBOX_KEY, []) : []
-app = { ...app, outbox: outbox.length }
+let app: AppState = {
+  phase: CLOUD ? 'starting' : userId ? 'ready' : 'signed-out',
+  error: null,
+  outbox: outbox.length,
+  viewTermId: readStorage<string | null>(VIEW_TERM_KEY, null),
+}
 const loadedScans = new Set<string>()
 
 const listeners = new Set<() => void>()
@@ -137,13 +191,59 @@ export function dismissError() {
   setApp({ error: null })
 }
 
+export function showError(message: string) {
+  setApp({ error: message })
+}
+
 /** Send a change to the server; on failure show why and reload the true state. */
-function remote(op: () => Promise<void>) {
+function remote(op: () => Promise<unknown>) {
   if (!CLOUD) return
   op().catch(async (err) => {
     setApp({ error: thaiError(err) })
     await reload()
   })
+}
+
+/** Run a bulk change: in the cloud it runs on the server and the data is reloaded afterwards. */
+async function bulk(cloudOp: () => Promise<void>, localOp: () => void): Promise<string | null> {
+  if (!CLOUD) {
+    localOp()
+    return null
+  }
+  try {
+    await cloudOp()
+    await reload()
+    return null
+  } catch (err) {
+    await reload()
+    return thaiError(err)
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Terms being viewed                                                  */
+/* ------------------------------------------------------------------ */
+
+/** The term in view: the one picked on this device, else the school's current term, else the latest. */
+export function viewTermOf(d: Database, wanted: string | null): Term | null {
+  const sorted = [...d.terms].sort(compareTerms)
+  return d.terms.find((t) => t.id === wanted) ?? d.terms.find((t) => t.id === d.settings.currentTermId) ?? sorted.at(-1) ?? null
+}
+
+export function useViewTerm(): Term | null {
+  const d = useDB()
+  const { viewTermId } = useAppState()
+  return viewTermOf(d, viewTermId)
+}
+
+export function setViewTerm(id: string) {
+  writeStorage(VIEW_TERM_KEY, id)
+  setApp({ viewTermId: id })
+  if (CLOUD) {
+    loadedScans.clear()
+    setApp({ phase: 'loading' })
+    void reload()
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -153,12 +253,22 @@ function remote(op: () => Promise<void>) {
 async function reload() {
   if (!CLOUD || !userId) return
   try {
-    const data = await fetchAll(userId)
+    const snap = await fetchAll(userId, app.viewTermId)
     const keepScans = db.scans.filter((s) => loadedScans.has(s.examId))
-    const rest: Partial<Database> & { me?: User | null } = { ...data }
-    delete rest.me
-    commit({ ...emptyDB(), ...rest, scans: keepScans })
-    setApp({ phase: 'ready' })
+    commit({
+      ...emptyDB(),
+      users: snap.users ?? [],
+      terms: snap.terms ?? [],
+      settings: snap.settings ?? emptyDB().settings,
+      presets: snap.presets ?? [],
+      classrooms: snap.classrooms ?? [],
+      enrollments: snap.enrollments ?? [],
+      students: snap.students ?? [],
+      exams: snap.exams ?? [],
+      scanCounts: snap.scanCounts ?? {},
+      scans: keepScans,
+    })
+    setApp({ phase: 'ready', viewTermId: snap.termId ?? app.viewTermId })
     await Promise.all([...loadedScans].map((id) => loadScans(id)))
   } catch (err) {
     setApp({ phase: 'ready', error: thaiError(err) })
@@ -192,18 +302,20 @@ export function login(id: string) {
   setApp({ phase: 'ready' })
 }
 
-export async function signInWithPassword(email: string, password: string): Promise<string | null> {
-  const { error } = await supabase!.auth.signInWithPassword({ email, password })
+/** Sign in with a username (admin-made account) or an e-mail address. */
+export async function signInWithPassword(username: string, password: string): Promise<string | null> {
+  const { error } = await supabase!.auth.signInWithPassword({ email: loginEmail(username), password })
   if (!error) return null
   return /fetch|network/i.test(error.message)
     ? 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ ตรวจสอบอินเทอร์เน็ต'
     : /invalid login/i.test(error.message)
-    ? 'อีเมลหรือรหัสผ่านไม่ถูกต้อง'
-    : /not confirmed/i.test(error.message)
-      ? 'ยังไม่ได้ยืนยันอีเมล กรุณาเปิดลิงก์ในอีเมลก่อน'
-      : error.message
+      ? 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง'
+      : /not confirmed/i.test(error.message)
+        ? 'ยังไม่ได้ยืนยันอีเมล กรุณาเปิดลิงก์ในอีเมลก่อน'
+        : error.message
 }
 
+/** First-time setup only: the very first account to sign up becomes the admin. */
 export async function signUp(email: string, password: string, name: string): Promise<{ error: string | null; needsConfirm: boolean }> {
   const { data, error } = await supabase!.auth.signUp({
     email,
@@ -215,10 +327,12 @@ export async function signUp(email: string, password: string, name: string): Pro
       error: /fetch|network/i.test(error.message)
         ? 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ ตรวจสอบอินเทอร์เน็ต'
         : /already registered/i.test(error.message)
-        ? 'อีเมลนี้สมัครแล้ว ให้เข้าสู่ระบบแทน'
-        : /password/i.test(error.message)
-          ? 'รหัสผ่านต้องยาวอย่างน้อย 6 ตัวอักษร'
-          : error.message,
+          ? 'อีเมลนี้สมัครแล้ว ให้เข้าสู่ระบบแทน'
+          : /signups? not allowed|disabled/i.test(error.message)
+            ? 'ปิดการสมัครแล้ว ให้ผู้ดูแลระบบสร้างบัญชีให้'
+            : /password/i.test(error.message)
+              ? 'รหัสผ่านต้องยาวอย่างน้อย 6 ตัวอักษร'
+              : error.message,
       needsConfirm: false,
     }
   return { error: null, needsConfirm: !data.session }
@@ -246,30 +360,58 @@ export function logout() {
 /* Users & settings (admin)                                            */
 /* ------------------------------------------------------------------ */
 
-/** Local mode: create a user. Cloud mode: pre-approve an email (they sign up themselves). */
-export function addUser(u: Omit<User, 'id'>) {
-  if (CLOUD) {
-    const a: AllowedEmail = { email: u.email.trim().toLowerCase(), name: u.name || null, role: u.role }
-    commit({ ...db, allowedEmails: [...db.allowedEmails.filter((x) => x.email !== a.email), a] })
-    remote(() => api.upsertAllowedEmail(a))
-    return
-  }
-  commit({ ...db, users: [...db.users, { ...u, id: uid() }] })
+export interface NewUser {
+  username: string
+  password: string
+  name: string
+  role: 'admin' | 'teacher'
 }
 
-export function removeAllowedEmail(email: string) {
-  commit({ ...db, allowedEmails: db.allowedEmails.filter((a) => a.email !== email) })
-  remote(() => api.removeAllowedEmail(email))
+/** Create an account the person signs in to with a username and password. Returns an error message or null. */
+export async function createUser(u: NewUser): Promise<string | null> {
+  const username = u.username.trim().toLowerCase()
+  if (!CLOUD) {
+    if (db.users.some((x) => x.username === username)) return `ชื่อผู้ใช้ ${username} มีอยู่แล้ว`
+    commit({ ...db, users: [...db.users, { id: uid(), name: u.name, email: loginEmail(username), username, role: u.role }] })
+    return null
+  }
+  try {
+    await api.createUser(username, u.password, u.name, u.role)
+    await reload()
+    return null
+  } catch (err) {
+    return thaiError(err)
+  }
+}
+
+export async function setUserPassword(id: string, password: string): Promise<string | null> {
+  if (!CLOUD) return null // demo mode has no passwords
+  try {
+    await api.setPassword(id, password)
+    return null
+  } catch (err) {
+    return thaiError(err)
+  }
+}
+
+export async function deleteUser(id: string): Promise<string | null> {
+  if (!CLOUD) {
+    if (db.exams.some((e) => e.ownerId === id)) return 'ครูคนนี้มีข้อสอบอยู่ ให้ปิดการใช้งานแทนการลบ'
+    commit({ ...db, users: db.users.filter((u) => u.id !== id) })
+    return null
+  }
+  try {
+    await api.deleteUser(id)
+    await reload()
+    return null
+  } catch (err) {
+    return thaiError(err)
+  }
 }
 
 export function updateUser(id: string, patch: { name?: string; role?: Role }) {
   commit({ ...db, users: db.users.map((u) => (u.id === id ? { ...u, ...patch } : u)) })
   remote(() => api.updateProfile(id, patch))
-}
-
-export function removeUser(id: string) {
-  commit({ ...db, users: db.users.filter((u) => u.id !== id) })
-  remote(() => api.removeProfile(id))
 }
 
 export function updateSettings(patch: Partial<Settings>) {
@@ -279,49 +421,259 @@ export function updateSettings(patch: Partial<Settings>) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Classrooms & students (admin)                                       */
+/* Terms (admin)                                                       */
 /* ------------------------------------------------------------------ */
 
-export function addClassroom(name: string): Classroom {
-  const c = { id: uid(), name }
+export type NewTermPlan =
+  | { mode: 'empty' }
+  /** next semester of the same year: same classes, same students */
+  | { mode: 'copy'; fromTermId: string }
+  /** new school year: classes move up a grade, top grade graduates */
+  | { mode: 'promote'; fromTermId: string; rows: PromotionRow[] }
+
+/** Classes and enrollments for a new term, derived from another term's roster. */
+export function planNewTermRoster(
+  termId: string,
+  roster: { classrooms: Classroom[]; enrollments: Enrollment[] },
+  plan: NewTermPlan,
+): { classrooms: Classroom[]; enrollments: Omit<Enrollment, 'id'>[]; graduates: string[] } {
+  if (plan.mode === 'empty') return { classrooms: [], enrollments: [], graduates: [] }
+  const classrooms = new Map<string, Classroom>()
+  const classFor = (grade: string, room: string) => {
+    const k = `${grade}\u0000${room}`
+    if (!classrooms.has(k)) classrooms.set(k, { id: uid(), termId, grade, room })
+    return classrooms.get(k)!
+  }
+  const enrollments: Omit<Enrollment, 'id'>[] = []
+  const graduates: string[] = []
+  for (const from of roster.classrooms) {
+    const target = plan.mode === 'copy' ? { kind: 'class' as const, grade: from.grade, room: from.room } : plan.rows.find((r) => r.classroomId === from.id)?.target
+    const members = roster.enrollments.filter((e) => e.classroomId === from.id)
+    if (!target || target.kind === 'skip') continue
+    if (target.kind === 'graduate') {
+      graduates.push(...members.map((e) => e.studentId))
+      continue
+    }
+    const to = classFor(target.grade, target.room)
+    for (const e of members) enrollments.push({ termId, classroomId: to.id, studentId: e.studentId, number: e.number })
+  }
+  return { classrooms: [...classrooms.values()], enrollments, graduates }
+}
+
+/** Open a new term and make it the current one. Returns an error message or null. */
+export async function createTerm(t: { year: number; semester: number }, plan: NewTermPlan): Promise<string | null> {
+  if (db.terms.some((x) => x.year === t.year && x.semester === t.semester)) return `ภาคเรียน ${t.semester}/${t.year} มีอยู่แล้ว`
+  const term: Term = { id: uid(), year: t.year, semester: t.semester }
+  const err = await bulk(
+    async () => {
+      const roster = plan.mode === 'empty' ? { classrooms: [], enrollments: [] } : await api.fetchTermRoster(plan.fromTermId)
+      const next = planNewTermRoster(term.id, roster, plan)
+      await api.insertTerm(term)
+      await api.insertClassrooms(next.classrooms)
+      await api.upsertEnrollments(next.enrollments)
+      if (next.graduates.length) await api.setStudentsStatus(next.graduates, 'graduated')
+      await api.updateSettings({ ...db.settings, currentTermId: term.id })
+      app = { ...app, viewTermId: term.id }
+    },
+    () => {
+      const roster = plan.mode === 'empty' ? { classrooms: [], enrollments: [] } : rosterOf(db, plan.fromTermId)
+      const next = planNewTermRoster(term.id, roster, plan)
+      const grads = new Set(next.graduates)
+      commit({
+        ...db,
+        terms: [...db.terms, term],
+        classrooms: [...db.classrooms, ...next.classrooms],
+        enrollments: [...db.enrollments, ...next.enrollments.map((e) => ({ ...e, id: uid() }))],
+        students: db.students.map((s) => (grads.has(s.id) ? { ...s, status: 'graduated' as const } : s)),
+        settings: { ...db.settings, currentTermId: term.id },
+      })
+      setApp({ viewTermId: term.id })
+    },
+  )
+  writeStorage(VIEW_TERM_KEY, term.id)
+  return err
+}
+
+function rosterOf(d: Database, termId: string) {
+  return { classrooms: d.classrooms.filter((c) => c.termId === termId), enrollments: d.enrollments.filter((e) => e.termId === termId) }
+}
+
+export function setCurrentTerm(id: string) {
+  updateSettings({ currentTermId: id })
+}
+
+/** Delete a term that has no exams (its classes and enrollments go with it). */
+export async function deleteTerm(id: string): Promise<string | null> {
+  if (db.settings.currentTermId === id) return 'ลบภาคเรียนปัจจุบันไม่ได้ ให้ตั้งภาคเรียนอื่นเป็นปัจจุบันก่อน'
+  if (db.exams.some((e) => e.termId === id)) return 'ภาคเรียนนี้มีข้อสอบอยู่ ลบไม่ได้'
+  return bulk(
+    () => api.removeTerm(id),
+    () =>
+      commit({
+        ...db,
+        terms: db.terms.filter((t) => t.id !== id),
+        classrooms: db.classrooms.filter((c) => c.termId !== id),
+        enrollments: db.enrollments.filter((e) => e.termId !== id),
+      }),
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* Classes & students (admin)                                          */
+/* ------------------------------------------------------------------ */
+
+export function classroomsOf(d: Database, termId: string | undefined): Classroom[] {
+  return d.classrooms.filter((c) => c.termId === termId).sort(compareRooms)
+}
+
+export function studentsOf(d: Database, classroomId: string): ClassStudent[] {
+  const byId = new Map(d.students.map((s) => [s.id, s]))
+  return d.enrollments
+    .filter((e) => e.classroomId === classroomId)
+    .flatMap((e): ClassStudent[] => {
+      const s = byId.get(e.studentId)
+      return s
+        ? [{ id: s.id, enrollmentId: e.id, classroomId: e.classroomId, number: e.number, code: s.code, prefix: s.prefix, firstName: s.firstName, lastName: s.lastName, name: fullName(s) }]
+        : []
+    })
+    .sort((a, b) => a.number - b.number || a.code.localeCompare(b.code))
+}
+
+export function addClassroom(termId: string, grade: string, room: string): Classroom | string {
+  if (db.classrooms.some((c) => c.termId === termId && c.grade === grade && c.room === room)) return `ห้อง ${grade}/${room} มีอยู่แล้ว`
+  const c: Classroom = { id: uid(), termId, grade, room }
   commit({ ...db, classrooms: [...db.classrooms, c] })
-  remote(() => api.insertClassroom(c))
+  remote(() => api.insertClassrooms([c]))
   return c
 }
 
-export function renameClassroom(id: string, name: string) {
-  commit({ ...db, classrooms: db.classrooms.map((c) => (c.id === id ? { ...c, name } : c)) })
-  remote(() => api.renameClassroom(id, name))
+export function updateClassroom(c: Classroom) {
+  commit({ ...db, classrooms: db.classrooms.map((x) => (x.id === c.id ? c : x)) })
+  remote(() => api.updateClassroom(c))
 }
 
 export function removeClassroom(id: string) {
-  commit({
-    ...db,
-    classrooms: db.classrooms.filter((c) => c.id !== id),
-    students: db.students.filter((s) => s.classroomId !== id),
-  })
+  commit({ ...db, classrooms: db.classrooms.filter((c) => c.id !== id), enrollments: db.enrollments.filter((e) => e.classroomId !== id) })
   remote(() => api.removeClassroom(id))
 }
 
-/** Add students; a row whose code already exists in the classroom updates that student. */
-export function addStudents(classroomId: string, rows: Omit<Student, 'id' | 'classroomId'>[]) {
-  const byCode = new Map(db.students.filter((s) => s.classroomId === classroomId).map((s) => [s.code, s]))
-  const changed: Student[] = rows.map((r) => {
-    const prev = byCode.get(r.code)
-    return prev ? { ...prev, ...r } : { ...r, id: uid(), classroomId }
+/**
+ * Add or update students for a term from imported rows: students are matched by
+ * เลขประจำตัว, classes are created as needed, and each student is put in their class
+ * (moved, if they were in another class this term). Returns an error message or null.
+ */
+export async function importStudentRows(termId: string, rows: StudentRow[]): Promise<string | null> {
+  return bulk(
+    async () => {
+      const ids = await api.upsertStudents(rows)
+      const existing = new Map(db.classrooms.filter((c) => c.termId === termId).map((c) => [`${c.grade}\u0000${c.room}`, c]))
+      const created: Classroom[] = []
+      for (const r of rows) {
+        const k = `${r.grade}\u0000${r.room}`
+        if (!existing.has(k)) {
+          const c = { id: uid(), termId, grade: r.grade, room: r.room }
+          existing.set(k, c)
+          created.push(c)
+        }
+      }
+      await api.insertClassrooms(created)
+      await api.upsertEnrollments(
+        rows.map((r) => ({ termId, classroomId: existing.get(`${r.grade}\u0000${r.room}`)!.id, studentId: ids.get(r.code)!, number: r.number })),
+      )
+    },
+    () => {
+      let { students, classrooms, enrollments } = db
+      const byCode = new Map(students.map((s) => [s.code, s]))
+      for (const r of rows) {
+        const prev = byCode.get(r.code)
+        const s: Student = { id: prev?.id ?? uid(), code: r.code, prefix: r.prefix, firstName: r.firstName, lastName: r.lastName, status: 'active' }
+        byCode.set(r.code, s)
+        let c = classrooms.find((x) => x.termId === termId && x.grade === r.grade && x.room === r.room)
+        if (!c) {
+          c = { id: uid(), termId, grade: r.grade, room: r.room }
+          classrooms = [...classrooms, c]
+        }
+        enrollments = [
+          ...enrollments.filter((e) => !(e.termId === termId && e.studentId === s.id)),
+          { id: uid(), termId, classroomId: c.id, studentId: s.id, number: r.number },
+        ]
+      }
+      students = [...byCode.values()]
+      commit({ ...db, students, classrooms, enrollments })
+    },
+  )
+}
+
+/** Edit a student's details and their เลขที่ in this class. */
+export function updateClassStudent(cs: ClassStudent, patch: { code?: string; prefix?: string; firstName?: string; lastName?: string; number?: number }) {
+  const student = db.students.find((s) => s.id === cs.id)
+  const enrollment = db.enrollments.find((e) => e.id === cs.enrollmentId)
+  if (!student || !enrollment) return
+  const { number, ...personal } = patch
+  const s: Student = { ...student, ...personal }
+  const e: Enrollment = { ...enrollment, number: number ?? enrollment.number }
+  commit({ ...db, students: db.students.map((x) => (x.id === s.id ? s : x)), enrollments: db.enrollments.map((x) => (x.id === e.id ? e : x)) })
+  remote(async () => {
+    await api.updateStudent(s)
+    if (e.number !== enrollment.number) await api.updateEnrollment(e)
   })
-  const ids = new Set(changed.map((s) => s.id))
-  commit({ ...db, students: [...db.students.filter((s) => !ids.has(s.id)), ...changed] })
-  remote(() => api.upsertStudents(changed))
 }
 
-export function removeStudent(id: string) {
-  commit({ ...db, students: db.students.filter((s) => s.id !== id) })
-  remote(() => api.removeStudent(id))
+export function moveStudent(enrollmentId: string, classroomId: string) {
+  const e = db.enrollments.find((x) => x.id === enrollmentId)
+  if (!e) return
+  const moved = { ...e, classroomId }
+  commit({ ...db, enrollments: db.enrollments.map((x) => (x.id === e.id ? moved : x)) })
+  remote(() => api.updateEnrollment(moved))
 }
 
-export function studentsOf(d: Database, classroomId: string): Student[] {
-  return d.students.filter((s) => s.classroomId === classroomId).sort((a, b) => a.number - b.number)
+/** Take a student out of a class for this term (e.g. moved school). Their record and past terms stay. */
+export function removeFromClass(enrollmentId: string, status: StudentStatus = 'left') {
+  const e = db.enrollments.find((x) => x.id === enrollmentId)
+  if (!e) return
+  commit({
+    ...db,
+    enrollments: db.enrollments.filter((x) => x.id !== enrollmentId),
+    students: db.students.map((s) => (s.id === e.studentId ? { ...s, status } : s)),
+  })
+  remote(async () => {
+    await api.removeEnrollment(enrollmentId)
+    await api.setStudentsStatus([e.studentId], status)
+  })
+}
+
+/* ------------------------------------------------------------------ */
+/* Answer-sheet presets (admin)                                        */
+/* ------------------------------------------------------------------ */
+
+export function savePreset(p: Omit<SheetPreset, 'id' | 'sort'> & { id?: string }): SheetPreset {
+  const prev = db.presets.find((x) => x.id === p.id)
+  const preset: SheetPreset = { ...p, id: p.id ?? uid(), sort: prev?.sort ?? Math.max(0, ...db.presets.map((x) => x.sort)) + 1 }
+  commit({ ...db, presets: prev ? db.presets.map((x) => (x.id === preset.id ? preset : x)) : [...db.presets, preset] })
+  remote(() => api.upsertPreset(preset))
+  return preset
+}
+
+export function removePreset(id: string) {
+  commit({ ...db, presets: db.presets.filter((p) => p.id !== id) })
+  remote(() => api.removePreset(id))
+}
+
+export function movePreset(id: string, dir: -1 | 1) {
+  const list = [...db.presets].sort((a, b) => a.sort - b.sort)
+  const i = list.findIndex((p) => p.id === id)
+  const j = i + dir
+  if (i < 0 || j < 0 || j >= list.length) return
+  ;[list[i], list[j]] = [list[j], list[i]]
+  const presets = list.map((p, k) => ({ ...p, sort: k + 1 }))
+  commit({ ...db, presets })
+  remote(async () => {
+    for (const p of [presets[i], presets[j]]) await api.upsertPreset(p)
+  })
+}
+
+export function sortedPresets(d: Database): SheetPreset[] {
+  return [...d.presets].sort((a, b) => a.sort - b.sort)
 }
 
 /* ------------------------------------------------------------------ */
@@ -330,12 +682,14 @@ export function studentsOf(d: Database, classroomId: string): Student[] {
 
 export function createExam(input: {
   title: string
+  termId: string
   classroomId: string
   ownerId: string
   sheet: SheetType
   defaultPoints: number
   /** false = sheet has no ID grid; students are matched later from the name picture */
   useStudentId: boolean
+  presetId: string | null
 }): Exam {
   const used = new Set(db.exams.map((e) => e.code))
   let code = randomExamCode()
@@ -344,11 +698,13 @@ export function createExam(input: {
     id: uid(),
     code,
     title: input.title,
+    termId: input.termId,
     classroomId: input.classroomId,
     ownerId: input.ownerId,
     createdAt: new Date().toISOString(),
     sheet: input.sheet,
     idDigits: input.useStudentId ? db.settings.idDigits : 0,
+    presetId: input.presetId,
     key: emptyKey(input.sheet.questions, input.defaultPoints),
   }
   commit({ ...db, exams: [exam, ...db.exams] })
@@ -368,8 +724,9 @@ export function removeExam(id: string) {
   remote(() => api.removeExam(id))
 }
 
-export function visibleExams(d: Database, user: User): Exam[] {
-  return d.exams.filter((e) => user.role === 'admin' || e.ownerId === user.id)
+/** Exams the user may see in a term: their own, or all for admins. */
+export function visibleExams(d: Database, user: User, termId: string | undefined): Exam[] {
+  return d.exams.filter((e) => e.termId === termId && (user.role === 'admin' || e.ownerId === user.id))
 }
 
 /* ------------------------------------------------------------------ */
