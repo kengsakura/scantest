@@ -9,6 +9,8 @@ export function AdminUsersPage() {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [role, setRole] = useState<Role>('teacher')
+  const [schoolName, setSchoolName] = useState(db.settings.schoolName)
+  const wrongLength = db.students.filter((s) => s.code.length !== db.settings.idDigits).length
   const pending = db.users.filter((u) => u.role === 'pending')
   const members = db.users.filter((u) => u.role !== 'pending')
 
@@ -24,7 +26,11 @@ export function AdminUsersPage() {
         <h2>ตั้งค่าโรงเรียน</h2>
         <label>
           ชื่อโรงเรียน
-          <input value={db.settings.schoolName} onChange={(e) => updateSettings({ schoolName: e.target.value })} />
+          <input
+            value={schoolName}
+            onChange={(e) => setSchoolName(e.target.value)}
+            onBlur={() => schoolName.trim() && schoolName !== db.settings.schoolName && updateSettings({ schoolName: schoolName.trim() })}
+          />
         </label>
         <label>
           จำนวนหลักของรหัสนักเรียน
@@ -36,6 +42,11 @@ export function AdminUsersPage() {
             ))}
           </select>
           <span className="hint">มีผลกับข้อสอบที่สร้างใหม่ ข้อสอบเดิมใช้รูปแบบกระดาษเดิม</span>
+          {wrongLength > 0 && (
+            <span className="hint warn">
+              นักเรียน {wrongLength} คนมีรหัสไม่ใช่ {db.settings.idDigits} หลัก จะจับคู่กับกระดาษคำตอบไม่ได้ ให้แก้รหัสในหน้าห้องเรียน
+            </span>
+          )}
         </label>
       </div>
 

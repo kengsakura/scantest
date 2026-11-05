@@ -87,7 +87,18 @@ function Scanner({ exam, user }: { exam: Exam; user: User }) {
   )
 
   /* ---- camera loop ---- */
-  const loop = useRef({ busy: false, prevSig: '', lockSig: '', lockStudent: '', misses: 0, timer: 0, lastTime: -1, stalled: 0 })
+  const loop = useRef({
+    busy: false,
+    /** signatures of the last reads; a sheet is saved once a read repeats */
+    recent: [] as string[],
+    /** after saving, ignore the camera until the sheet is taken away or a different student appears */
+    locked: false,
+    lockStudent: '',
+    misses: 0,
+    timer: 0,
+    lastTime: -1,
+    stalled: 0,
+  })
 
   const drawOverlay = (res: ScanResult, w: number, h: number) => {
     const c = overlayRef.current
@@ -119,37 +130,38 @@ function Scanner({ exam, user }: { exam: Exam; user: User }) {
       if (!res.ok) {
         if (res.reason === 'no-markers') {
           L.misses++
-          if (L.misses >= 2) {
-            L.lockSig = ''
-            L.lockStudent = ''
-          }
+          if (L.misses >= 2) L.locked = false // sheet was taken away
         }
-        L.prevSig = ''
-        setStatus(L.lockSig ? 'สแกนแผ่นนี้แล้ว เปลี่ยนเป็นแผ่นถัดไป' : SCAN_FAILURE_TEXT[res.reason])
+        L.recent = []
+        setStatus(L.locked ? 'สแกนแผ่นนี้แล้ว เปลี่ยนเป็นแผ่นถัดไป' : SCAN_FAILURE_TEXT[res.reason])
         return
       }
       L.misses = 0
       if (res.config.examCode !== exam.code) {
-        L.prevSig = ''
+        L.recent = []
         setStatus(`กระดาษนี้เป็นของข้อสอบรหัส ${res.config.examCode} ไม่ใช่ข้อสอบนี้ (${exam.code})`)
         return
       }
-      const sig = signature(res)
-      const sameSheet = sig === L.lockSig || (res.studentId !== null && res.studentId === L.lockStudent)
-      if (sameSheet) {
-        setStatus('สแกนแผ่นนี้แล้ว เปลี่ยนเป็นแผ่นถัดไป')
-        return
+      if (L.locked) {
+        // still the saved sheet, unless a different student's ID is clearly visible
+        if (res.studentId === null || res.studentId === L.lockStudent) {
+          setStatus('สแกนแผ่นนี้แล้ว เปลี่ยนเป็นแผ่นถัดไป')
+          return
+        }
+        L.locked = false
+        L.recent = []
       }
-      if (sig !== L.prevSig) {
-        // need two identical reads in a row before saving
-        L.prevSig = sig
+      const sig = signature(res)
+      // save when this read matches one of the previous two (tolerates one flickering frame)
+      if (!L.recent.includes(sig)) {
+        L.recent = [...L.recent, sig].slice(-2)
         setStatus('กำลังอ่าน… ถือกล้องนิ่งๆ')
         return
       }
       accept(res)
-      L.lockSig = sig
+      L.locked = true
       L.lockStudent = res.studentId ?? ''
-      L.prevSig = ''
+      L.recent = []
       setStatus('บันทึกแล้ว ✓ วางแผ่นถัดไปได้เลย')
     },
     [exam.code, accept],

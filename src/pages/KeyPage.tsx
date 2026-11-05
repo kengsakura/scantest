@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { scansOf, updateExam, useDB } from '../data/store'
 import { formatScore } from '../lib/exam'
 import { go } from '../lib/router'
@@ -29,7 +29,28 @@ export function KeyPage({ examId }: { examId: string }) {
   const [key, setKey] = useState<AnswerKey | null>(exam ? structuredClone(exam.key) : null)
   const [bulkPoints, setBulkPoints] = useState(exam?.key.points[0] ?? 1)
   const [quick, setQuick] = useState('')
-  const [saved, setSaved] = useState(false)
+  const [saved, setSaved] = useState(true)
+
+  // Auto-save shortly after each change, and on leaving the page, so edits are never lost.
+  const dirty = useRef(false)
+  const latest = useRef(key)
+  latest.current = key
+  useEffect(() => {
+    if (!dirty.current || !latest.current) return
+    const t = window.setTimeout(() => {
+      updateExam(examId, { key: latest.current! })
+      dirty.current = false
+      setSaved(true)
+    }, 800)
+    return () => window.clearTimeout(t)
+  }, [key, examId])
+  useEffect(
+    () => () => {
+      if (dirty.current && latest.current) updateExam(examId, { key: latest.current })
+    },
+    [examId],
+  )
+
   if (!exam || !key) return <p>ไม่พบข้อสอบ</p>
 
   const labels = choiceLabels(exam.sheet)
@@ -40,11 +61,13 @@ export function KeyPage({ examId }: { examId: string }) {
     const next = structuredClone(key)
     fn(next)
     setKey(next)
+    dirty.current = true
     setSaved(false)
   }
 
   const save = (thenScan: boolean) => {
     updateExam(exam.id, { key })
+    dirty.current = false
     setSaved(true)
     if (thenScan) go(`/exams/${exam.id}/scan`)
   }
@@ -69,7 +92,7 @@ export function KeyPage({ examId }: { examId: string }) {
         </div>
         <div className="head-actions">
           <button className="btn secondary" onClick={() => save(false)}>
-            {saved ? 'บันทึกแล้ว ✓' : 'บันทึก'}
+            {saved ? 'บันทึกแล้ว ✓' : 'กำลังบันทึก…'}
           </button>
           <button className="btn" onClick={() => save(true)} disabled={missing.length > 0} title={missing.length ? 'ใส่เฉลยให้ครบก่อน' : ''}>
             บันทึกแล้วเริ่มสแกน →

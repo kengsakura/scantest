@@ -225,6 +225,14 @@ export async function signUp(email: string, password: string, name: string): Pro
 }
 
 export function logout() {
+  if (CLOUD && outbox.length > 0) {
+    const ok = confirm(
+      `ยังมีผลสแกน ${outbox.length} แผ่นที่ยังไม่ได้ส่งขึ้นเซิร์ฟเวอร์ (อาจเพราะไม่มีอินเทอร์เน็ต)\nถ้าออกจากระบบตอนนี้ ผลสแกนเหล่านี้จะหายไป\n\nยืนยันออกจากระบบ?`,
+    )
+    if (!ok) return
+    outbox = []
+    saveOutbox()
+  }
   if (CLOUD) {
     void supabase!.auth.signOut()
     return
